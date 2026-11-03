@@ -15,3 +15,7 @@ if os.environ.get("GITHUB_STEP_SUMMARY"):
     with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:
         output.write(summary)
 print(summary)
+if os.environ.get("GITHUB_ACTIONS"):
+    for line in diagnostics[:40]:
+        escaped = line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::error title=Xcode diagnostic::{escaped}")
