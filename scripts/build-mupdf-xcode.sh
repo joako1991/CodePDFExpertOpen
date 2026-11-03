@@ -32,7 +32,7 @@ for architecture in ${ARCHS:?}; do
   case "$architecture" in arm64|x86_64) ;; *) echo "error: Unsupported architecture $architecture" >&2; exit 1 ;; esac
   slice="$build_root/$architecture"
   target="$architecture-apple-ios$minimum$suffix"
-  flags="-target $target -isysroot \"$sdk_path\" -fPIC"
+  flags="-target $target -isysroot \"$sdk_path\" -I\"$project_root/Native/AppleCompat\" -fPIC"
   signature="$(printf '%s\n' "$expected" "$flags" "$(xcrun --sdk "$sdk" clang --version)" 'mujs=no' | shasum -a 256 | cut -d ' ' -f 1)"
   if [[ -d "$slice" && ( ! -f "$slice/.build-signature" || "$(cat "$slice/.build-signature")" != "$signature" ) ]]; then
     # This directory contains only this script's generated per-architecture objects.

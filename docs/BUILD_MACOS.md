@@ -57,6 +57,8 @@ La première phase du target exécute `scripts/build-mupdf-xcode.sh`. Elle utili
 
 Les compilations device et simulateur utilisent des répertoires distincts. Pour un simulateur Intel le script prend en charge `x86_64`, et pour Apple Silicon `arm64`. Le SDK, la version du compilateur et les flags entrent dans une signature de cache : si elle change, les objets générés de la slice concernée sont reconstruits. Aucun accès réseau n’est effectué pendant la phase Xcode. Trois tâches Make sont utilisées pour limiter les ressources.
 
+Le SDK iOS ne contient pas l’en-tête macOS `sys/random.h` inclus par cette version de MuPDF. `Native/AppleCompat/sys/random.h` fournit ce contrat avec `arc4random_buf`, sans patcher le moteur ni affaiblir sa source d’entropie. Ce fichier de compatibilité fait partie du source distribué.
+
 La phase a son sandbox de scripts Xcode désactivé car les Makefiles compilent leurs sources et génèrent des objets hors du répertoire DerivedData. Les scripts restent dans le dépôt et sont inspectables. Le build ne nécessite ni les scripts iOS historiques de MuPDF de 2018, ni bitcode, ni Homebrew, ni SDK Office commercial.
 
 Une compilation CLI sans signature pour le simulateur est aussi possible :
