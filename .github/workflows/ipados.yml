@@ -9,12 +9,21 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: Vendor/mupdf
+          key: mupdf-linux-1.28.6-nojs-${{ runner.arch }}-v1
       - name: Fetch pinned MuPDF sources
         run: bash scripts/fetch-mupdf.sh
       - name: Build native engine and tools
         run: make -C Vendor/mupdf -j3 build=release HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no USE_SYSTEM_CURL=no USE_TESSERACT=no USE_ZXINGCPP=no mujs=no tools
       - name: Test production C bridge
         run: python3 scripts/test-native-engine.py --source Vendor/mupdf
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: Vendor/mupdf
+          key: mupdf-linux-1.28.6-nojs-${{ runner.arch }}-v1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -25,6 +34,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            Vendor/mupdf
+            build/mupdf
+          key: mupdf-ios-1.28.6-${{ runner.arch }}-${{ hashFiles('scripts/build-mupdf-xcode.sh', 'Native/AppleCompat/**') }}-v1
       - name: Fetch pinned MuPDF sources and notices
         run: bash scripts/fetch-mupdf.sh
       - name: Build and run PDF workflow tests
@@ -36,6 +51,13 @@ jobs:
           set -e
           python3 scripts/ci-build-summary.py
           exit "$build_status"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            Vendor/mupdf
+            build/mupdf
+          key: mupdf-ios-1.28.6-${{ runner.arch }}-${{ hashFiles('scripts/build-mupdf-xcode.sh', 'Native/AppleCompat/**') }}-v1
       - name: Retain test results
         if: always()
         uses: actions/upload-artifact@v4

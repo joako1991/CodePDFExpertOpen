@@ -51,7 +51,7 @@ struct PDFCanvas: UIViewRepresentable {
 
 /// Gestures convert view coordinates to PDF page coordinates, including zoom and rotation.
 @MainActor
-final class DrawingPDFView: PDFView, UIGestureRecognizerDelegate {
+final class DrawingPDFView: PDFView {
     weak var workspace: PDFWorkspace?
     private var stroke: [CGPoint] = []
     private var strokePage: PDFPage?
