@@ -1,5 +1,13 @@
 # Historique
 
+## En développement — main
+
+- Interface en anglais, espagnol et français avec choix persistant et changement immédiat.
+- Outils activables/désactivables, réglages avant usage, application automatique du marquage lors de la sélection.
+- Zones de texte placées par toucher/glissement, poignée de redimensionnement, police/taille/graisse/couleur configurables.
+- Notes et signatures placées sur la page ; remplacement MuPDF activé avant sélection.
+- OCR espagnol et tests de régression des outils, du placement et des ressources de traduction.
+
 ## 0.1 — 3 novembre 2026
 
 Première version de développement iPadOS 17+, sous AGPL-3.0-or-later.

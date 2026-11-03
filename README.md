@@ -2,6 +2,16 @@
 
 Application native en français pour **iPadOS 17+**, sous **AGPL-3.0-or-later**. Interface SwiftUI, lecture/annotations PDFKit, OCR Vision, scanner VisionKit et **édition du contenu avec MuPDF 1.28.6**. Application indépendante de PDF Expert/Readdle, avec son propre nom et sa propre interface.
 
+## Changements en développement sur `main`
+
+- Choix de langue English / Español / Français dans la barre latérale, conservé au redémarrage. Le changement de l’interface ne ferme pas le document et ne traduit pas les PDF de l’utilisateur. Les sélecteurs système iOS peuvent suivre la langue de l’appareil.
+- Outils persistants : activer, configurer, puis utiliser sur la page. Toucher à nouveau le bouton ou choisir Terminer pour désactiver l’outil. Les commandes de document (export, rotation, etc.) restent des actions directes.
+- Soulignement bleu par défaut, surlignage jaune et barré rouge : activer d’abord, puis sélectionner/glisser sur le texte pour appliquer automatiquement. Chaque outil conserve sa couleur configurée durant la session.
+- Texte : activer, toucher le point de départ ou tracer le cadre, puis saisir le contenu. Choisir famille (sans empattement, avec empattement, monospace), taille, graisse et couleur. Pour modifier un texte existant, sélectionner son annotation puis Modifier le texte. Pour redimensionner, activer Déplacer, sélectionner la zone et tirer sa poignée inférieure droite.
+- Notes et signatures placées à l’endroit touché. Le remplacement de contenu MuPDF s’active également avant de sélectionner la ligne ou l’image.
+
+Ces changements sont sur `main` ; le tag `v0.1` conserve la version publiée. Sur un Mac ayant cloné ce tag, conserver vos modifications locales puis utiliser `git fetch origin`, `git switch main` et `git pull --ff-only origin main` pour récupérer le développement courant.
+
 ## Compiler sur macOS
 
 Il faut **Xcode 16 ou ultérieur**, ses outils en ligne de commande, Git, Python 3 et un accès Internet pour récupérer les sources du moteur. Installer un runtime iOS dans Xcode pour les tests sur simulateur. Utiliser un chemin de checkout **sans espaces** (limitation des Makefiles MuPDF).

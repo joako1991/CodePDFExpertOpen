@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 private struct SharedFile: Identifiable { let id = UUID(); let url: URL }
 private enum EditorSheet: String, Identifiable {
-    case note, text, signature, password, ocr, editAnnotation, masked, optimize, forms, contentText, contentImage
+    case placement, signature, password, ocr, editAnnotation, masked, optimize, forms, contentText, contentImage
     var id: String { rawValue }
 }
 
@@ -15,7 +15,6 @@ struct EditorView: View {
     @State private var dimBackground = false
     @State private var search = ""
     @State private var sheet: EditorSheet?
-    @State private var input = ""
     @State private var password = ""
     @State private var sharedFile: SharedFile?
     @State private var merging = false
@@ -24,7 +23,6 @@ struct EditorView: View {
     @State private var pendingShare: URL?
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: String?
-    @State private var textTarget: ContentTextTarget?
     @State private var nativeEditing = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -70,6 +68,9 @@ struct EditorView: View {
         }
         .sheet(item: $sheet, onDismiss: {
             if let pendingShare { sharedFile = SharedFile(url: pendingShare); self.pendingShare = nil }
+            workspace.placement = nil
+            workspace.textTarget = nil
+            if workspace.activeTool == .signature && workspace.signatureStrokes.isEmpty { workspace.activeTool = .read }
         }) { kind in sheetContent(kind) }
         .sheet(item: $sharedFile) { ActivitySheet(url: $0.url) }
         .fileImporter(isPresented: $merging, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
@@ -77,7 +78,7 @@ struct EditorView: View {
         }
         .alert("Impossible de terminer", isPresented: Binding(get: { workspace.error != nil }, set: { if !$0 { workspace.error = nil } })) {
             Button("OK") { workspace.error = nil }
-        } message: { Text(workspace.error ?? "") }
+        } message: { Text(L10n.tr(workspace.error ?? "")) }
         .confirmationDialog("Supprimer la page \(workspace.pageIndex + 1) ?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Supprimer la page", role: .destructive) { workspace.deletePage() }
         }
@@ -90,6 +91,8 @@ struct EditorView: View {
             if phase == .background, workspace.dirty || workspace.hasFormFields { workspace.save() }
         }
         .onDisappear { exportTask?.cancel() }
+        .onChange(of: workspace.placement?.id) { id in if id != nil { sheet = .placement } }
+        .onChange(of: workspace.textTarget?.id) { id in if id != nil { sheet = .contentText } }
         .onChange(of: workspace.imageTarget?.id) { id in
             if id != nil { sheet = .contentImage }
         }
@@ -135,62 +138,11 @@ struct EditorView: View {
     }
 
     private var tools: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 18) {
-                Button { showPages.toggle() } label: { Label("Pages", systemImage: "sidebar.left") }
-                Divider().frame(height: 24)
-                Button { workspace.highlight() } label: { Label("Surligner", systemImage: "highlighter") }
-                Menu {
-                    Button("Souligner") { workspace.markup(.underline) }
-                    Button("Barrer") { workspace.markup(.strikeOut) }
-                } label: { Image(systemName: "textformat.abc") }.accessibilityLabel("Marquer le texte sélectionné")
-                Button { input = ""; sheet = .note } label: { Label("Note", systemImage: "note.text.badge.plus") }
-                Button { input = ""; sheet = .text } label: { Label("Texte", systemImage: "textformat") }
-                Button { sheet = .signature } label: { Label("Signer", systemImage: "signature") }
-                Button { sheet = .ocr; workspace.recognizeCurrentPage() } label: { Label("OCR", systemImage: "text.viewfinder") }
-                Button { sheet = .forms } label: { Label("Formulaire", systemImage: "list.clipboard") }
-                Menu {
-                    Button("Remplacer une ligne de texte", systemImage: "text.cursor") {
-                        do { textTarget = try workspace.selectedTextTarget(); sheet = .contentText }
-                        catch { workspace.error = error.localizedDescription }
-                    }
-                    Button("Remplacer une image", systemImage: "photo") {
-                        workspace.activeTool = .targetImage
-                        workspace.status = "Touchez l’image PDF à remplacer"
-                    }
-                } label: { Label("Modifier le contenu", systemImage: "doc.badge.gearshape") }
-                Menu {
-                    ForEach(CanvasTool.allCases) { tool in
-                        Button(tool.title, systemImage: tool.symbol) { workspace.activeTool = tool }
-                    }
-                } label: { Label(workspace.activeTool.title, systemImage: workspace.activeTool.symbol) }
-                ColorPicker("Couleur", selection: $workspace.inkColor, supportsOpacity: false).labelsHidden().frame(width: 32)
-                Menu {
-                    ForEach([1, 2, 4, 8], id: \.self) { width in
-                        Button("\(width) pt") { workspace.lineWidth = CGFloat(width) }
-                    }
-                } label: { Image(systemName: "lineweight") }.accessibilityLabel("Épaisseur du trait")
-                if let annotation = workspace.selectedAnnotation {
-                    Menu {
-                        if annotation.type == "FreeText" || annotation.type == "Text" {
-                            Button("Modifier le texte") { input = annotation.contents ?? ""; sheet = .editAnnotation }
-                        }
-                        Button("Agrandir") { workspace.resizeSelected(by: 1.2) }
-                        Button("Réduire") { workspace.resizeSelected(by: 0.8) }
-                        Button("Supprimer l’annotation", role: .destructive) { workspace.removeAnnotation(annotation) }
-                    } label: { Label("Annotation", systemImage: "square.dashed") }
-                }
-                Menu {
-                    Button("Tourner de 90°", systemImage: "rotate.right") { workspace.rotate() }
-                    Button("Déplacer avant", systemImage: "arrow.up") { workspace.movePage(by: -1) }.disabled(workspace.pageIndex == 0)
-                    Button("Déplacer après", systemImage: "arrow.down") { workspace.movePage(by: 1) }
-                        .disabled(workspace.pageIndex + 1 >= (workspace.document?.pageCount ?? 0))
-                    Button("Ajouter un autre PDF", systemImage: "plus.rectangle.on.rectangle") { merging = true }
-                    Button("Supprimer la page", systemImage: "trash", role: .destructive) { confirmDelete = true }
-                        .disabled((workspace.document?.pageCount ?? 0) < 2)
-                } label: { Label("Organiser", systemImage: "square.stack.3d.up") }
-            }.padding(.horizontal, 20).padding(.vertical, 14).buttonStyle(.borderless)
-        }.background(Color(uiColor: .secondarySystemBackground))
+        EditorToolsView(workspace: workspace, showPages: $showPages,
+            signature: { sheet = .signature },
+            ocr: { sheet = .ocr; workspace.recognizeCurrentPage() },
+            forms: { sheet = .forms }, merge: { merging = true },
+            deletePage: { confirmDelete = true }, editAnnotation: { sheet = .editAnnotation })
     }
 
     private var pages: some View {
@@ -229,7 +181,7 @@ struct EditorView: View {
             Button { workspace.go(to: workspace.pageIndex + 1) } label: { Image(systemName: "chevron.right") }
                 .disabled(workspace.pageIndex + 1 >= (workspace.document?.pageCount ?? 0)).accessibilityLabel("Page suivante")
             Spacer()
-            Text(workspace.status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(L10n.tr(workspace.status)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
             TextField("Rechercher du texte", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 200)
                 .onSubmit { workspace.search(search) }
@@ -253,20 +205,19 @@ struct EditorView: View {
         NavigationStack {
             Group {
                 switch kind {
-                case .note, .text, .editAnnotation:
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text(kind == .editAnnotation ? "Modifiez le contenu de l’annotation sélectionnée." : "L’annotation sera placée au centre de la page. Utilisez Déplacer pour la repositionner.").foregroundStyle(.secondary)
-                        TextEditor(text: $input).padding(8).background(Color(uiColor: .secondarySystemBackground))
-                        Button(kind == .editAnnotation ? "Mettre à jour" : "Ajouter à la page") {
-                            if kind == .editAnnotation { workspace.updateSelectedText(input) }
-                            else { workspace.addText(input, note: kind == .note) }
-                            sheet = nil
-                        }
-                            .buttonStyle(.borderedProminent).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }.padding().navigationTitle(kind == .note ? "Ajouter une note" : "Ajouter du texte")
+                case .placement:
+                    if let placement = workspace.placement {
+                        TextAnnotationEditor(workspace: workspace, placement: placement, annotation: nil, done: { sheet = nil })
+                    }
+                case .editAnnotation:
+                    TextAnnotationEditor(workspace: workspace, placement: nil, annotation: workspace.selectedAnnotation, done: { sheet = nil })
                 case .signature:
-                    SignatureView { strokes, size in workspace.addSignature(strokes, size: size); sheet = nil }
-                        .navigationTitle("Votre signature")
+                    SignatureView { strokes, size in
+                        workspace.signatureStrokes = strokes
+                        workspace.signatureSize = size
+                        workspace.activeTool = .signature
+                        sheet = nil
+                    }.navigationTitle("Votre signature")
                 case .password:
                     Form {
                         Section("Protéger une copie PDF") {
@@ -299,7 +250,7 @@ struct EditorView: View {
                 case .forms:
                     FormFieldsView(workspace: workspace)
                 case .contentText:
-                    if let target = textTarget {
+                    if let target = workspace.textTarget {
                         ContentEditView(textTarget: target, imageTarget: nil, apply: { text, size, _ in
                             nativeEditing = true
                             defer { nativeEditing = false }
@@ -331,10 +282,10 @@ struct EditorView: View {
             defer { exportProgress = nil; exportTask = nil }
             do {
                 let data = try await OCRService.searchablePDF(document) { page, count in
-                    exportProgress = "Reconnaissance : page \(page) sur \(count)"
+                    exportProgress = L10n.format("Reconnaissance : page %lld sur %lld", page, count)
                 }
                 try Task.checkCancellation()
-                share(try PDFConversions.temporaryFile(data: data, name: "Document recherchable.pdf"))
+                share(try PDFConversions.temporaryFile(data: data, name: L10n.tr("Document recherchable.pdf")))
             } catch is CancellationError {
                 workspace.status = "Export OCR annulé"
             } catch { workspace.error = error.localizedDescription }

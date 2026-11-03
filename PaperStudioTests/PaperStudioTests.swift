@@ -1,5 +1,7 @@
 import XCTest
 import PDFKit
+import Combine
+import SwiftUI
 @testable import PaperStudio
 
 @MainActor
@@ -304,5 +306,132 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(url.pathExtension, "docx")
         XCTAssertEqual(try Data(contentsOf: url).prefix(2), Data([0x50, 0x4b]))
         XCTAssertFalse(workspace.dirty)
+    }
+
+    func testToolCanBeEnabledWithoutSelectionAndToggledOff() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        workspace.toggleTool(.underline)
+        XCTAssertEqual(workspace.activeTool, .underline)
+        XCTAssertEqual(UIColor(workspace.inkColor), UIColor(Color.blue))
+        XCTAssertFalse(workspace.dirty)
+        XCTAssertNil(workspace.error)
+        workspace.toggleTool(.underline)
+        XCTAssertEqual(workspace.activeTool, .read)
+        XCTAssertFalse(workspace.canUndo)
+    }
+
+    func testConfiguredToolColourSurvivesSwitchingTools() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        workspace.toggleTool(.underline)
+        workspace.inkColor = .green
+        workspace.toggleTool(.highlight)
+        XCTAssertEqual(UIColor(workspace.inkColor), UIColor(Color.yellow))
+        workspace.toggleTool(.underline)
+        XCTAssertEqual(UIColor(workspace.inkColor), UIColor(Color.green))
+    }
+
+    func testUnderlineAppliesAutomaticallyWhenPDFSelectionChanges() async throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = DrawingPDFView(frame: CGRect(x: 0, y: 0, width: 600, height: 800))
+        view.workspace = workspace
+        workspace.pdfView = view
+        view.document = workspace.document
+        workspace.toggleTool(.underline)
+        view.configureTool()
+        let applied = expectation(description: "Native PDF selection triggers underline")
+        let observer = workspace.$revision.dropFirst().prefix(1).sink { _ in applied.fulfill() }
+        defer { observer.cancel() }
+        let selection = try XCTUnwrap(workspace.document?.findString("Paper Studio", withOptions: []).first)
+        view.setCurrentSelection(selection, animate: false)
+        await fulfillment(of: [applied], timeout: 4)
+        XCTAssertTrue(workspace.page?.annotations.contains { $0.type == "Underline" } == true)
+        XCTAssertEqual(workspace.activeTool, .underline)
+        XCTAssertNil(view.currentSelection)
+        workspace.undo()
+        XCTAssertFalse(workspace.page?.annotations.contains { $0.type == "Underline" } == true)
+    }
+
+    func testMarkupDoesNotDuplicateAndReadModeDoesNotAnnotate() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let selection = try XCTUnwrap(workspace.document?.findString("Paper Studio", withOptions: []).first)
+        workspace.commitToolSelection(selection)
+        XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
+        workspace.toggleTool(.underline)
+        workspace.commitToolSelection(selection)
+        let count = workspace.page?.annotations.count
+        workspace.commitToolSelection(selection)
+        XCTAssertEqual(workspace.page?.annotations.count, count)
+    }
+
+    func testTextPlacementUsesChosenBoundsAndPersistsFormatting() throws {
+        let url = try library.createWelcome()
+        let workspace = PDFWorkspace(url: url)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.toggleTool(.text)
+        workspace.textStyle.family = .serif
+        workspace.textStyle.size = 24
+        workspace.textStyle.weight = .bold
+        workspace.textStyle.color = Color(UIColor.red)
+        let bounds = CGRect(x: 45, y: 90, width: 290, height: 75)
+        workspace.requestPlacement(on: page, bounds: bounds)
+        let placement = try XCTUnwrap(workspace.placement)
+        XCTAssertFalse(workspace.dirty)
+        workspace.placeText("Placed here", at: placement)
+        let annotation = try XCTUnwrap(workspace.selectedAnnotation)
+        XCTAssertEqual(annotation.bounds, bounds)
+        XCTAssertEqual(annotation.font?.pointSize, 24)
+        XCTAssertTrue(annotation.font?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+        XCTAssertEqual(workspace.activeTool, .text)
+        XCTAssertTrue(workspace.save())
+        let restored = try XCTUnwrap(PDFDocument(url: url)?.page(at: 0)?.annotations.first { $0.contents == "Placed here" })
+        XCTAssertEqual(restored.bounds, bounds)
+        XCTAssertEqual(try XCTUnwrap(restored.font?.pointSize), 24, accuracy: 0.1)
+    }
+
+    func testTextPlacementIsClippedToCropBoxAndRejectsTinyAreas() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let page = try XCTUnwrap(workspace.page)
+        page.setBounds(CGRect(x: 20, y: 30, width: 400, height: 600), for: .cropBox)
+        workspace.requestPlacement(on: page, bounds: CGRect(x: -20, y: -10, width: 100, height: 100))
+        XCTAssertEqual(workspace.placement?.bounds, CGRect(x: 20, y: 30, width: 60, height: 60))
+        workspace.placement = nil
+        workspace.requestPlacement(on: page, bounds: CGRect(x: 50, y: 50, width: 2, height: 2))
+        XCTAssertNil(workspace.placement)
+        XCTAssertFalse(workspace.dirty)
+    }
+
+    func testTextFormattingAndBoxResizeCanBeUndone() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let page = try XCTUnwrap(workspace.page)
+        workspace.requestPlacement(on: page, bounds: CGRect(x: 40, y: 80, width: 200, height: 80))
+        workspace.placeText("Original", at: try XCTUnwrap(workspace.placement))
+        let annotation = try XCTUnwrap(workspace.selectedAnnotation)
+        workspace.textStyle.size = 30
+        workspace.textStyle.weight = .bold
+        workspace.updateTextAnnotation(annotation, text: "Edited")
+        workspace.moveAnnotation(annotation, to: CGRect(x: 70, y: 100, width: 300, height: 100))
+        XCTAssertEqual(annotation.bounds.width, 300)
+        workspace.undo()
+        XCTAssertEqual(workspace.page?.annotations.first?.bounds.width, 200)
+        workspace.undo()
+        XCTAssertEqual(workspace.page?.annotations.first?.contents, "Original")
+        XCTAssertEqual(workspace.page?.annotations.first?.font?.pointSize, 16)
+    }
+
+    func testSignatureUsesChosenLocationInsteadOfPageCentre() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        workspace.addSignature([[CGPoint(x: 5, y: 5), CGPoint(x: 80, y: 20)]],
+            size: CGSize(width: 100, height: 50), on: workspace.page, at: CGPoint(x: 45, y: 200))
+        let annotation = try XCTUnwrap(workspace.page?.annotations.first)
+        XCTAssertEqual(annotation.bounds.minX, 45)
+        XCTAssertEqual(annotation.bounds.maxY, 200)
+    }
+
+    func testAllThreeLanguagesAreBundledAndTranslateInterfaceAndErrors() {
+        XCTAssertEqual(L10n.tr("Souligner", language: .english), "Underline")
+        XCTAssertEqual(L10n.tr("Souligner", language: .spanish), "Subrayar")
+        XCTAssertEqual(L10n.tr("Souligner", language: .french), "Souligner")
+        XCTAssertEqual(L10n.tr("Mot de passe incorrect.", language: .english), "Incorrect password.")
+        XCTAssertEqual(L10n.tr("Zone de texte", language: .spanish), "Cuadro de texto")
     }
 }

@@ -19,7 +19,7 @@ struct FormFieldsView: View {
                 Text("Aucun champ texte ou liste AcroForm détecté. Les formulaires XFA ne sont pas pris en charge.")
             }
             ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
-                Section("\(field.annotation.fieldName ?? "Champ \(index + 1)") · page \(field.page + 1)") {
+                Section("\(field.annotation.fieldName ?? "\(L10n.tr("Champ")) \(index + 1)") · page \(field.page + 1)") {
                     if let choices = field.annotation.choices, !choices.isEmpty {
                         Picker("Valeur", selection: binding(index, field.annotation)) {
                             Text("—").tag("")

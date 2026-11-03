@@ -77,9 +77,9 @@ final class DocumentLibrary: ObservableObject {
     }
 
     @discardableResult
-    func createFromImages(_ images: [UIImage], name: String = "Images") throws -> URL {
+    func createFromImages(_ images: [UIImage], name: String? = nil) throws -> URL {
         let data = try PDFConversions.fromImages(images)
-        let url = uniqueURL(name)
+        let url = uniqueURL(name ?? L10n.tr("Images"))
         try data.write(to: url, options: .atomic)
         try reload()
         return url
@@ -107,15 +107,15 @@ final class DocumentLibrary: ObservableObject {
 
     @discardableResult
     func createWelcome() throws -> URL {
-        let url = uniqueURL("Bienvenue dans Paper Studio")
+        let url = uniqueURL(L10n.tr("Bienvenue dans Paper Studio"))
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 595, height: 842))
         let data = renderer.pdfData { context in
             context.beginPage()
             UIColor.systemIndigo.setFill()
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 595, height: 14))
-            let title = "Votre prochain chapitre."
+            let title = L10n.tr("Votre prochain chapitre.")
             title.draw(in: CGRect(x: 50, y: 90, width: 495, height: 100), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 38), .foregroundColor: UIColor.systemIndigo])
-            let body = "Bienvenue dans Paper Studio\n\nUn espace pour lire, annoter et organiser vos PDF sur iPad.\n\nSélectionnez ce texte, puis choisissez Surligner. Ajoutez une note ou une signature depuis la barre d’outils.\n\nOuvrez Pages pour réorganiser, extraire ou fusionner vos documents. Le menu d’export permet de créer une copie protégée par mot de passe.\n\nVos documents restent sur cet appareil."
+            let body = L10n.tr("Bienvenue dans Paper Studio\n\nActivez un outil, puis utilisez-le directement sur la page.\n\nActivez Souligner et sélectionnez du texte. Activez Texte, puis touchez la page ou tracez une zone. Réglez la police, la taille et la graisse dans les réglages de l’outil.\n\nChoisissez Déplacer pour repositionner une annotation ou redimensionner une zone de texte par sa poignée. Terminer désactive l’outil.\n\nVos documents restent sur cet appareil.")
             body.draw(in: CGRect(x: 50, y: 220, width: 495, height: 500), withAttributes: [.font: UIFont.systemFont(ofSize: 19), .foregroundColor: UIColor.darkGray])
         }
         try data.write(to: url, options: .atomic)

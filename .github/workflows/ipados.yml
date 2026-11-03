@@ -44,6 +44,10 @@ jobs:
           key: mupdf-ios-1.28.6-${{ runner.arch }}-${{ hashFiles('scripts/build-mupdf-xcode.sh', 'Native/AppleCompat/**') }}-v1
       - name: Fetch pinned MuPDF sources and notices
         run: bash scripts/fetch-mupdf.sh
+      - name: Check project and localization resources
+        run: |
+          python3 scripts/check-project.py
+          python3 scripts/check-localization.py
       - name: Build and run PDF workflow tests
         run: |
           mkdir -p build

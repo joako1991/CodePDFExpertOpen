@@ -18,7 +18,7 @@ for ref in scheme.iter("BuildableReference"):
 assert len(list(scheme.iter("TestableReference"))) == 1
 tests = (root / "PaperStudioTests/PaperStudioTests.swift").read_text()
 test_count = len(re.findall(r"func test\w+\(", tests))
-assert test_count >= 24, "Expected regression test methods are missing"
+assert test_count >= 33, "Expected regression test methods are missing"
 assert "TARGETED_DEVICE_FAMILY = 2;" in project
 assert "IPHONEOS_DEPLOYMENT_TARGET = 17.0;" in project
 assert "INFOPLIST_KEY_NSCameraUsageDescription" in project
@@ -28,5 +28,8 @@ assert '"-lPaperMuPDF"' in project
 assert "Build MuPDF 1.28.6" in project
 assert "MARKETING_VERSION = 0.1;" in project
 assert "PaperStudio/Legal" in project
+assert "PBXVariantGroup" in project
+for language in ["en", "es", "fr"]:
+    assert f"Localization/{language}.lproj/Localizable.strings" in project
 print(f"Structure OK: {len(definitions)} project objects, shared scheme, {test_count} test methods.")
 print("Swift compilation and XCTest execution require Xcode on macOS; neither ran here.")

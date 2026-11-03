@@ -65,7 +65,7 @@ struct MaskedExportView: View {
                 Button("Exporter la copie masquée") { confirm = true }
                     .buttonStyle(.borderedProminent).disabled(masks.values.allSatisfy(\.isEmpty) || exporting)
             }
-            if let error { Text(error).foregroundStyle(.red) }
+            if let error { Text(L10n.tr(error)).foregroundStyle(.red) }
         }
         .padding().navigationTitle("Masquer des informations")
         .onAppear { index = initialPage; loadThumbnail() }
@@ -79,7 +79,7 @@ struct MaskedExportView: View {
                     defer { exporting = false }
                     do {
                         let data = try PDFConversions.rasterized(document, quality: .detailed, masks: masks)
-                        let url = try PDFConversions.temporaryFile(data: data, name: "Copie masquée.pdf")
+                        let url = try PDFConversions.temporaryFile(data: data, name: L10n.tr("Copie masquée.pdf"))
                         onExport(url)
                     } catch { self.error = error.localizedDescription }
                 }

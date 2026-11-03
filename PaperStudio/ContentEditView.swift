@@ -45,12 +45,12 @@ struct ContentEditView: View {
                     }
                 }.disabled(busy || loading || (textTarget != nil ? text.isEmpty : imageData == nil))
                 if busy { ProgressView("Traitement du PDF…") }
-                if let error { Text(error).foregroundStyle(.red) }
+                if let error { Text(L10n.tr(error)).foregroundStyle(.red) }
                 Text("L’opération peut être annulée depuis la barre d’outils du document après son application.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
-        .navigationTitle(textTarget == nil ? "Remplacer une image" : "Remplacer le texte")
+        .navigationTitle(LocalizedStringKey(textTarget == nil ? "Remplacer une image" : "Remplacer le texte"))
         .disabled(busy)
         .interactiveDismissDisabled(busy || loading)
         .onAppear {

@@ -32,6 +32,6 @@ struct LegalView: View {
             Text(Bundle.main.url(forResource: name, withExtension: "txt", subdirectory: "Legal")
                 .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "Texte indisponible")
                 .font(.footnote.monospaced()).textSelection(.enabled).padding()
-        }.navigationTitle(name == "LICENSE" ? "AGPL-3.0-or-later" : "Attributions")
+        }.navigationTitle(LocalizedStringKey(name == "LICENSE" ? "AGPL-3.0-or-later" : "Attributions"))
     }
 }

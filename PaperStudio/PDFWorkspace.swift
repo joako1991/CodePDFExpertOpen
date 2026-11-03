@@ -3,33 +3,55 @@ import PDFKit
 import Vision
 
 enum CanvasTool: String, CaseIterable, Identifiable {
-    case read, pen, rectangle, oval, move, erase, targetImage
+    case read, highlight, underline, strikeOut, text, note, signature, pen, rectangle, oval, move, erase, replaceText, targetImage
     var id: String { rawValue }
     var title: String {
         switch self {
         case .read: return "Lire"
+        case .highlight: return "Surligner"
+        case .underline: return "Souligner"
+        case .strikeOut: return "Barrer"
+        case .text: return "Texte"
+        case .note: return "Note"
+        case .signature: return "Signer"
         case .pen: return "Dessiner"
         case .rectangle: return "Rectangle"
         case .oval: return "Ellipse"
         case .move: return "Déplacer"
         case .erase: return "Effacer"
-        case .targetImage: return "Choisir une image PDF"
+        case .replaceText: return "Remplacer le texte"
+        case .targetImage: return "Remplacer une image"
         }
     }
     var symbol: String {
         switch self {
         case .read: return "hand.draw"
+        case .highlight: return "highlighter"
+        case .underline: return "underline"
+        case .strikeOut: return "strikethrough"
+        case .text: return "textformat"
+        case .note: return "note.text.badge.plus"
+        case .signature: return "signature"
         case .pen: return "pencil.tip"
         case .rectangle: return "rectangle"
         case .oval: return "oval"
         case .move: return "arrow.up.left.and.arrow.down.right"
         case .erase: return "eraser"
+        case .replaceText: return "text.cursor"
         case .targetImage: return "photo.badge.arrow.down"
         }
     }
+    var markup: PDFAnnotationSubtype? {
+        switch self { case .highlight: return .highlight; case .underline: return .underline; case .strikeOut: return .strikeOut; default: return nil }
+    }
+    var selectsText: Bool { markup != nil || self == .replaceText }
+    var defaultColor: Color {
+        switch self { case .highlight: return .yellow; case .underline: return .blue; case .strikeOut: return .red; case .text, .signature: return .black; default: return .indigo }
+    }
 }
 
-struct ContentTextTarget {
+struct ContentTextTarget: Identifiable {
+    let id = UUID()
     let page: Int
     let bounds: CGRect
     let text: String
@@ -53,8 +75,26 @@ final class PDFWorkspace: ObservableObject {
     @Published var recognizing = false
     @Published var recognizedText = ""
     @Published var searchResults: [PDFSelection] = []
-    @Published var activeTool: CanvasTool = .read
-    @Published var inkColor: Color = .indigo
+    @Published var activeTool: CanvasTool = .read {
+        didSet {
+            guard oldValue != activeTool else { return }
+            switchingTool = true
+            inkColor = toolColors[activeTool] ?? activeTool.defaultColor
+            switchingTool = false
+            pdfView?.clearSelection()
+            selectedAnnotation = nil
+        }
+    }
+    @Published var inkColor: Color = .indigo {
+        didSet { if !switchingTool { toolColors[activeTool] = inkColor } }
+    }
+    private var switchingTool = false
+    private var toolColors: [CanvasTool: Color] = [:]
+    @Published var textStyle = TextStyle()
+    @Published var placement: AnnotationPlacement?
+    @Published var textTarget: ContentTextTarget?
+    var signatureStrokes: [[CGPoint]] = []
+    var signatureSize: CGSize = .zero
     @Published var lineWidth: CGFloat = 2
     @Published var selectedAnnotation: PDFAnnotation?
     @Published var bookmarks: Set<Int> = []
@@ -201,7 +241,7 @@ final class PDFWorkspace: ObservableObject {
         searchResults = []
         pdfView?.highlightedSelections = nil
         imageTarget = nil
-        activeTool = .read
+        pdfView?.clearSelection()
         dirty = true
         revision += 1
         status = "Contenu PDF modifié avec MuPDF — enregistrez le document"
@@ -255,17 +295,94 @@ final class PDFWorkspace: ObservableObject {
         markup(.highlight)
     }
 
+    func toggleTool(_ tool: CanvasTool) {
+        activeTool = activeTool == tool ? .read : tool
+    }
+
     func markup(_ type: PDFAnnotationSubtype) {
-        guard let selection = pdfView?.currentSelection, !(selection.string ?? "").isEmpty else {
-            error = StudioError.emptySelection.localizedDescription; return
-        }
-        perform {
-            for line in selection.selectionsByLine() {
-                for page in line.pages {
-                    let annotation = PDFAnnotation(bounds: line.bounds(for: page), forType: type, withProperties: nil)
-                    annotation.color = type == .highlight ? UIColor.systemYellow.withAlphaComponent(0.45) : UIColor(inkColor)
-                    page.addAnnotation(annotation)
+        guard let selection = pdfView?.currentSelection else { return }
+        applyMarkup(selection, type: type)
+    }
+
+    func applyMarkup(_ selection: PDFSelection, type: PDFAnnotationSubtype) {
+        guard !(selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        var additions: [(PDFPage, CGRect)] = []
+        let color = UIColor(inkColor).withAlphaComponent(type == .highlight ? 0.4 : 1)
+        for line in selection.selectionsByLine() {
+            for page in line.pages {
+                let bounds = line.bounds(for: page)
+                guard !bounds.isEmpty else { continue }
+                let duplicate = page.annotations.contains {
+                    $0.type == type.rawValue.replacingOccurrences(of: "/", with: "") &&
+                    $0.bounds == bounds
                 }
+                if !duplicate { additions.append((page, bounds)) }
+            }
+        }
+        guard !additions.isEmpty else { return }
+        perform {
+            for (page, bounds) in additions {
+                let annotation = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
+                annotation.color = color
+                let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
+                page.addAnnotation(annotation)
+            }
+        }
+    }
+
+    func commitToolSelection(_ selection: PDFSelection) {
+        if let markup = activeTool.markup { applyMarkup(selection, type: markup) }
+        else if activeTool == .replaceText, selection.pages.count == 1,
+                selection.selectionsByLine().count == 1, let page = selection.pages.first,
+                let document, let text = selection.string, !text.isEmpty {
+            textTarget = ContentTextTarget(page: document.index(for: page), bounds: selection.bounds(for: page), text: text)
+        }
+    }
+
+    func requestPlacement(on page: PDFPage, bounds: CGRect, note: Bool = false) {
+        let clipped = bounds.standardized.intersection(page.bounds(for: .cropBox))
+        guard !clipped.isNull, clipped.width >= 12, clipped.height >= 12 else {
+            status = "Sélectionnez une zone plus grande pour le texte."
+            return
+        }
+        placement = AnnotationPlacement(page: page, bounds: clipped, note: note)
+    }
+
+    func placeText(_ text: String, at placement: AnnotationPlacement) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              placement.page.document === document else { return }
+        perform {
+            let annotation = PDFAnnotation(bounds: placement.bounds, forType: placement.note ? .text : .freeText, withProperties: nil)
+            annotation.contents = text
+            annotation.font = textStyle.font
+            annotation.fontColor = UIColor(textStyle.color)
+            annotation.color = placement.note ? .systemYellow : .clear
+            let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
+            placement.page.addAnnotation(annotation)
+            selectedAnnotation = annotation
+        }
+    }
+
+    func readTextStyle(from annotation: PDFAnnotation) {
+        guard let font = annotation.font else { return }
+        textStyle.size = Double(font.pointSize)
+        let name = font.familyName.lowercased()
+        textStyle.family = font.fontDescriptor.symbolicTraits.contains(.traitMonoSpace) ? .monospaced :
+            (name.contains("serif") || name.contains("newyork") || name.contains("times") ? .serif : .system)
+        let traits = font.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any]
+        let weight = (traits?[.weight] as? NSNumber)?.doubleValue ?? 0
+        textStyle.weight = weight >= Double(UIFont.Weight.bold.rawValue) ? .bold :
+            (weight >= Double(UIFont.Weight.semibold.rawValue) ? .semibold : (weight >= Double(UIFont.Weight.medium.rawValue) ? .medium : .regular))
+        textStyle.color = Color(annotation.fontColor ?? .black)
+    }
+
+    func updateTextAnnotation(_ annotation: PDFAnnotation, text: String) {
+        guard annotation.page?.document === document else { return }
+        perform {
+            annotation.contents = text
+            if annotation.type == "FreeText" {
+                annotation.font = textStyle.font
+                annotation.fontColor = UIColor(textStyle.color)
             }
         }
     }
@@ -336,13 +453,16 @@ final class PDFWorkspace: ObservableObject {
         }
     }
 
-    func addSignature(_ strokes: [[CGPoint]], size: CGSize) {
-        guard let page, size.width > 0, size.height > 0, !strokes.isEmpty else { return }
+    func addSignature(_ strokes: [[CGPoint]], size: CGSize, on targetPage: PDFPage? = nil, at point: CGPoint? = nil) {
+        guard let page = targetPage ?? page, size.width > 0, size.height > 0, !strokes.isEmpty else { return }
         perform {
-            let box = page.bounds(for: .mediaBox)
+            let box = page.bounds(for: .cropBox)
             let width = min(240.0, box.width * 0.7)
-            let height = width * size.height / size.width
-            let annotation = PDFAnnotation(bounds: CGRect(x: box.midX - width / 2, y: box.midY - height / 2, width: width, height: height), forType: .ink, withProperties: nil)
+            let height = min(box.height, width * size.height / size.width)
+            let anchor = point ?? CGPoint(x: box.midX - width / 2, y: box.midY + height / 2)
+            let x = min(max(anchor.x, box.minX), box.maxX - width)
+            let y = min(max(anchor.y - height, box.minY), box.maxY - height)
+            let annotation = PDFAnnotation(bounds: CGRect(x: x, y: y, width: width, height: height), forType: .ink, withProperties: nil)
             annotation.color = .black
             let border = PDFBorder(); border.lineWidth = 2; annotation.border = border
             for stroke in strokes where stroke.count > 1 {
@@ -420,7 +540,7 @@ final class PDFWorkspace: ObservableObject {
             }
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let destination = folder.appendingPathComponent(currentPageOnly ? "Page \(pageIndex + 1).pdf" : url.lastPathComponent)
+            let destination = folder.appendingPathComponent(currentPageOnly ? L10n.format("Page %lld", pageIndex + 1) + ".pdf" : url.lastPathComponent)
             var options: [PDFDocumentWriteOption: Any] = [:]
             if let password, !password.isEmpty {
                 options[.userPasswordOption] = password
@@ -459,7 +579,7 @@ final class PDFWorkspace: ObservableObject {
         do {
             guard let document, document.allowsCopying, let page,
                   let data = PDFConversions.image(of: page, quality: .detailed).pngData() else { throw StudioError.invalidPDF }
-            return try PDFConversions.temporaryFile(data: data, name: "Page \(pageIndex + 1).png")
+            return try PDFConversions.temporaryFile(data: data, name: L10n.format("Page %lld", pageIndex + 1) + ".png")
         } catch { self.error = error.localizedDescription; return nil }
     }
 }

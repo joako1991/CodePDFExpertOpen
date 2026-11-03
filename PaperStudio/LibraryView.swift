@@ -17,6 +17,7 @@ struct LibraryView: View {
     @State private var renaming: LibraryDocument?
     @State private var newName = ""
     @State private var showLegal = false
+    @AppStorage("appLanguage") private var language: AppLanguage = .preferred
     private var filtered: [LibraryDocument] {
         library.documents.filter {
             (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) &&
@@ -49,6 +50,9 @@ struct LibraryView: View {
                 } label: { Label("Document de découverte", systemImage: "sparkles") }.disabled(selected != nil)
                 if importingImages { ProgressView("Création du PDF…") }
                 Spacer()
+                Picker("Langue", selection: $language) {
+                    ForEach(AppLanguage.allCases) { Text(verbatim: $0.title).tag($0) }
+                }.pickerStyle(.menu).accessibilityIdentifier("app-language")
                 Button { showLegal = true } label: { Label("À propos et licences", systemImage: "info.circle") }
                 Label("Sur cet iPad", systemImage: "lock.shield")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -72,7 +76,7 @@ struct LibraryView: View {
                 scanning = false
                 do {
                     let images = try result.get()
-                    if !images.isEmpty { selected = try library.createFromImages(images, name: "Numérisation") }
+                    if !images.isEmpty { selected = try library.createFromImages(images, name: L10n.tr("Numérisation")) }
                 } catch { library.error = error.localizedDescription }
             }
         }
@@ -108,7 +112,7 @@ struct LibraryView: View {
         }
         .alert("Impossible de terminer", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("OK") { library.error = nil }
-        } message: { Text(library.error ?? "") }
+        } message: { Text(L10n.tr(library.error ?? "")) }
         .confirmationDialog("Supprimer ce document de la bibliothèque ?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
             Button("Supprimer", role: .destructive) {
                 if let item = pendingDelete {
@@ -124,7 +128,7 @@ struct LibraryView: View {
             VStack(alignment: .leading, spacing: 28) {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(recentOnly ? "Cette semaine" : "Mes documents").font(.largeTitle.bold())
+                        Text(LocalizedStringKey(recentOnly ? "Cette semaine" : "Mes documents")).font(.largeTitle.bold())
                         Text("Un peu de clarté dans toutes vos idées.").foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -150,7 +154,7 @@ struct LibraryView: View {
                 if filtered.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "doc.badge.plus").font(.system(size: 48)).foregroundStyle(.indigo)
-                        Text(query.isEmpty ? "Votre bibliothèque vous attend" : "Aucun document trouvé").font(.title2.bold())
+                        Text(LocalizedStringKey(query.isEmpty ? "Votre bibliothèque vous attend" : "Aucun document trouvé")).font(.title2.bold())
                         Text("Importez un PDF depuis Fichiers, ou créez un document de découverte.").foregroundStyle(.secondary)
                         Button("Créer un document de découverte") {
                             do { selected = try library.createWelcome() } catch { library.error = error.localizedDescription }

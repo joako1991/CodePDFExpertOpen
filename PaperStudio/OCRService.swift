@@ -15,7 +15,7 @@ enum OCRService {
             try Task.checkCancellation()
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
-            request.recognitionLanguages = ["fr-FR", "en-US"]
+            request.recognitionLanguages = ["fr-FR", "en-US", "es-ES"]
             request.usesLanguageCorrection = true
             try VNImageRequestHandler(cgImage: image).perform([request])
             try Task.checkCancellation()

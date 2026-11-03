@@ -16,7 +16,7 @@ struct RasterExportView: View {
             Section("Copie aplatie") {
                 Text("Chaque page sera convertie en image. Les formulaires, liens et annotations ne seront plus interactifs ; le texte ne sera plus sélectionnable. L’original reste inchangé.")
                 Picker("Qualité", selection: $quality) {
-                    ForEach(RasterQuality.allCases) { item in Text(item.title).tag(item) }
+                    ForEach(RasterQuality.allCases) { item in Text(LocalizedStringKey(item.title)).tag(item) }
                 }.disabled(exporting)
                 Text("La taille dépend du document. Un PDF déjà optimisé peut devenir plus volumineux.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -28,7 +28,7 @@ struct RasterExportView: View {
                         do {
                             let data = try PDFConversions.rasterized(document, quality: quality)
                             resultSize = data.count
-                            resultURL = try PDFConversions.temporaryFile(data: data, name: "Copie aplatie.pdf")
+                            resultURL = try PDFConversions.temporaryFile(data: data, name: L10n.tr("Copie aplatie.pdf"))
                         } catch { self.error = error.localizedDescription }
                     }
                 }.disabled(exporting)
@@ -41,7 +41,7 @@ struct RasterExportView: View {
                     Button("Partager cette copie") { onExport(resultURL) }.buttonStyle(.borderedProminent)
                 }
             }
-            if let error { Text(error).foregroundStyle(.red) }
+            if let error { Text(L10n.tr(error)).foregroundStyle(.red) }
         }.navigationTitle("Aplatir et réduire")
             .interactiveDismissDisabled(exporting)
     }

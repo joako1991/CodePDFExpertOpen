@@ -8,7 +8,7 @@ struct SignatureView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Signez avec votre doigt ou l’Apple Pencil. La signature sera ajoutée au centre de la page.")
+            Text("Signez avec votre doigt ou l’Apple Pencil, puis touchez la page pour placer votre signature.")
                 .foregroundStyle(.secondary)
             GeometryReader { geometry in
                 Canvas { context, _ in
@@ -33,7 +33,7 @@ struct SignatureView: View {
             HStack {
                 Button("Effacer", role: .destructive) { strokes = []; current = [] }
                 Spacer()
-                Button("Insérer la signature") { onApply(strokes, canvasSize) }
+                Button("Utiliser cette signature") { onApply(strokes, canvasSize) }
                     .buttonStyle(.borderedProminent).disabled(strokes.isEmpty)
             }
             Text("Signature graphique uniquement ; aucune certification cryptographique.")
