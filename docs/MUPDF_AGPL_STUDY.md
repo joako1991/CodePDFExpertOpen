@@ -1,6 +1,6 @@
 # MuPDF sous AGPL : décision technique pour Paper Studio
 
-> Document historique de l’étude préalable. MuPDF a depuis été adopté dans la version 0.1 sous AGPL-3.0-or-later. Le target Xcode inclut maintenant le pont C et la compilation du moteur ; voir [le guide actuel](BUILD_MACOS.md). Les réserves ci-dessous décrivent l’état au moment de l’étude, pas le raccordement actuel. La validation Xcode reste à faire.
+> Document historique de l’étude préalable. MuPDF a depuis été adopté dans la version 0.1 sous AGPL-3.0-or-later. Le target Xcode inclut maintenant le pont C et la compilation du moteur ; voir [le guide actuel](BUILD_MACOS.md). Les réserves ci-dessous décrivent l’état au moment de l’étude, pas le raccordement actuel. La compilation et les tests du simulateur ont depuis réussi dans la CI macOS ; les essais matériels restent à faire.
 
 Étude du 3 novembre 2026, à la suite du choix utilisateur d’étudier un moteur libre sous AGPL pour une application libre compatible.
 

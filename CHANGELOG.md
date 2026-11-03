@@ -9,6 +9,6 @@ Première version de développement iPadOS 17+, sous AGPL-3.0-or-later.
 - Compilation MuPDF par plateforme/architecture depuis des sources épinglées, sans patch ni binaire propriétaire.
 - OCR local, scanner, imports images, exports protégés/aplatis et masques intégrés aux pixels.
 - Licence, notices et sources accessibles dans l’application ; guide macOS et installation sur iPad.
-- 16 tests du pont C vérifiés sur Linux ; 24 XCTest et workflow macOS fournis. La compilation complète Apple n’est pas validée dans l’environnement Linux de préparation.
+- 16 tests du pont C vérifiés sur Linux ; compilation iPadOS et exécution du scheme de 24 XCTest réussies sur simulateur dans la CI macOS. Les essais matériels et la signature personnelle restent à effectuer.
 
 Limites : police et mise en page d’origine non conservées lors du remplacement de texte, une seule ligne, images inline refusées, fidélité DOCX non garantie, pas de conversion Excel/PowerPoint, synchronisation cloud propre ou IA. Pas de binaire iPad signé fourni.

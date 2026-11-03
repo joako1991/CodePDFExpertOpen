@@ -19,3 +19,7 @@ if os.environ.get("GITHUB_ACTIONS"):
     for line in diagnostics[:40]:
         escaped = line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
         print(f"::error title=Xcode diagnostic::{escaped}")
+    counts = [line.strip() for line in lines if re.search(r"Executed \d+ tests?", line)]
+    if counts:
+        escaped = counts[-1].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::notice title=XCTest results::{escaped}")

@@ -26,7 +26,7 @@ Le 3 novembre 2026, les fichiers officiels suivants ont été téléchargés ave
 
 Le README présente MuPDF comme un framework de visualisation/conversion PDF, XPS et livres numériques. Le README et COPYING confirment la licence **GNU AGPL version 3 ou ultérieure**, avec une option de licence commerciale à demander à Artifex. Cela établit une contrainte de licence, pas une garantie de prise en charge de toutes les fonctions souhaitées.
 
-L’utilisateur a ensuite choisi d’étudier un moteur libre sous AGPL. Une [étude MuPDF 1.28.6](MUPDF_AGPL_STUDY.md) et un [prototype C reproductible](../experiments/mupdf/README.md) ont été ajoutés : **11 tests natifs Linux réussissent**, y compris remplacement de texte/image, retrait de texte et export DOCX sur une fixture contrôlée. MuPDF a ensuite été adopté dans la version 0.1, avec licence AGPL-3.0-or-later, pont C relié au target et compilation des bibliothèques par plateforme. Les 16 tests du pont de production passent sous Linux ; la compilation Xcode et la qualité sur un corpus réel restent à vérifier. Voir [le guide macOS](BUILD_MACOS.md).
+L’utilisateur a ensuite choisi d’étudier un moteur libre sous AGPL. Une [étude MuPDF 1.28.6](MUPDF_AGPL_STUDY.md) et un [prototype C reproductible](../experiments/mupdf/README.md) ont été ajoutés : **11 tests natifs Linux réussissent**, y compris remplacement de texte/image, retrait de texte et export DOCX sur une fixture contrôlée. MuPDF a ensuite été adopté dans la version 0.1, avec licence AGPL-3.0-or-later, pont C relié au target et compilation des bibliothèques par plateforme. Les 16 tests du pont de production passent sous Linux ; la compilation et les tests du simulateur ont ensuite réussi dans la CI macOS ; la qualité sur un corpus réel et les essais matériels restent à vérifier. Voir [le guide macOS](BUILD_MACOS.md).
 
 ## Interface retenue
 
@@ -72,4 +72,4 @@ Cette conception doit encore être vérifiée sur le SDK Apple. Ne pas la prése
 8. Tester masques sur pages tournées/cadrées ; extraire les images du PDF final, examiner leurs pixels, chercher les chaînes masquées et vérifier l’absence de métadonnées, liens, pièces jointes et objets d’origine.
 9. Vérifier Pencil, multitâche, fenêtres étroites, VoiceOver, grandes tailles de texte et pression mémoire sur gros documents.
 
-Aucune de ces vérifications natives n’est déclarée réussie depuis Linux. L’analyse Tree-sitter des 17 fichiers Swift et le contrôle structurel du projet réussissent ; ils ne vérifient ni les types Apple ni le comportement de l’application.
+Les contrôles Linux restent distincts des essais Apple. La compilation et les tests du scheme iPadOS ont réussi sur le simulateur du runner macOS ; les vérifications manuelles sur appareil et corpus réel ci-dessus restent à effectuer. L’analyse Tree-sitter locale ne résout pas les types Apple.

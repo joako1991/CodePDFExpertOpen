@@ -113,7 +113,7 @@ Tests manuels prioritaires sur iPad : remplacement d’une ligne et annulation, 
 | Image inline | Cette forme d’image n’est pas remplaçable en 0.1. |
 | Résultat Word imparfait | La conversion locale ne garantit pas la fidélité des tableaux, colonnes, images et polices. |
 
-Le code est préparé pour les SDK Apple actuels, mais **aucune compilation Xcode n’a été exécutée dans l’environnement Linux de préparation**. Les tests natifs Linux valident le pont C, pas SwiftUI, PDFKit, la signature ou l’interface iPad. Ne pas interpréter les analyses syntaxiques comme une validation de ces API.
+**La compilation et les tests sur simulateur ont réussi dans le [job macOS GitHub Actions](https://github.com/joako1991/CodePDFExpertOpen/actions/runs/41610773961).** L’environnement local de préparation est Linux ; les contrôles syntaxiques locaux ne remplacent pas cette validation distante. La signature pour votre compte, les essais caméra/Pencil et le comportement sur votre iPad restent à vérifier sur appareil.
 
 ## 7. Licence et diffusion
 
