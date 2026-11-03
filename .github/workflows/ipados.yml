@@ -28,11 +28,20 @@ jobs:
       - name: Fetch pinned MuPDF sources and notices
         run: bash scripts/fetch-mupdf.sh
       - name: Build and run PDF workflow tests
-        run: bash scripts/test-ios.sh
+        run: |
+          mkdir -p build
+          set +e
+          bash scripts/test-ios.sh > build/xcodebuild.log 2>&1
+          build_status=$?
+          set -e
+          python3 scripts/ci-build-summary.py
+          exit "$build_status"
       - name: Retain test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ipados-test-results
-          path: build/*.xcresult
+          path: |
+            build/*.xcresult
+            build/xcodebuild.log
           if-no-files-found: ignore
