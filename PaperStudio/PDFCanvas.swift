@@ -208,7 +208,7 @@ final class DrawingPDFView: PDFView {
                 let points = workspace.activeTool == .pen ? stroke : [stroke[0], stroke[stroke.count - 1]]
                 workspace.addDrawing(on: page, points: points, tool: workspace.activeTool)
             }
-        case .cancelled, .failed: clearGesture()
+        case .cancelled, .failed: cancelToolGesture()
         default: break
         }
     }
@@ -252,6 +252,12 @@ final class DrawingPDFView: PDFView {
 
     private func clearGesture() {
         stroke = []; strokePage = nil; movingAnnotation = nil; resizing = false; preview.path = nil
+    }
+
+    func cancelToolGesture() {
+        selectionWork?.cancel()
+        if workspace?.activeTool.selectsText == true { clearSelection() }
+        clearGesture()
     }
 }
 

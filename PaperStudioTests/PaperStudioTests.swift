@@ -368,6 +368,25 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
     }
 
+    func testCancelledSelectionGestureDoesNotCreateAnAnnotation() async throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = DrawingPDFView(frame: CGRect(x: 0, y: 0, width: 600, height: 800))
+        view.workspace = workspace
+        workspace.pdfView = view
+        view.document = workspace.document
+        workspace.toggleTool(.underline)
+        view.configureTool()
+        let notApplied = expectation(description: "Cancelled selection must not annotate")
+        notApplied.isInverted = true
+        let observer = workspace.$revision.dropFirst().sink { _ in notApplied.fulfill() }
+        defer { observer.cancel() }
+        view.setCurrentSelection(try XCTUnwrap(workspace.document?.findString("Paper Studio", withOptions: []).first), animate: false)
+        view.cancelToolGesture()
+        await fulfillment(of: [notApplied], timeout: 1)
+        XCTAssertNil(view.currentSelection)
+        XCTAssertFalse(workspace.dirty)
+    }
+
     func testTextPlacementUsesChosenBoundsAndPersistsFormatting() throws {
         let url = try library.createWelcome()
         let workspace = PDFWorkspace(url: url)

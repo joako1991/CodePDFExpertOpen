@@ -48,8 +48,18 @@ struct AnnotationPlacement: Identifiable {
 
 struct TextStyleControls: View {
     @Binding var style: TextStyle
+    private var familySelection: Binding<TextFamily> {
+        Binding(get: { style.family }, set: { family in
+            var updated = style
+            updated.family = family
+            if !updated.availableWeights.contains(updated.weight) {
+                updated.weight = updated.weight == .medium ? .regular : .bold
+            }
+            style = updated
+        })
+    }
     var body: some View {
-        Picker("Police", selection: $style.family) {
+        Picker("Police", selection: familySelection) {
             ForEach(TextFamily.allCases) { Text(LocalizedStringKey($0.title)).tag($0) }
         }
         Stepper(value: $style.size, in: 6...96) { Text("Taille : \(Int(style.size)) pt") }
@@ -57,9 +67,6 @@ struct TextStyleControls: View {
             ForEach(style.availableWeights) { Text(LocalizedStringKey($0.title)).tag($0) }
         }
         ColorPicker("Couleur du texte", selection: $style.color, supportsOpacity: false)
-            .onChange(of: style.family) { _ in
-                if !style.availableWeights.contains(style.weight) { style.weight = style.weight == .medium ? .regular : .bold }
-            }
     }
 }
 

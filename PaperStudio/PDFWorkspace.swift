@@ -375,6 +375,9 @@ final class PDFWorkspace: ObservableObject {
         let weight = (traits?[.weight] as? NSNumber)?.doubleValue ?? 0
         textStyle.weight = weight >= Double(UIFont.Weight.bold.rawValue) ? .bold :
             (weight >= Double(UIFont.Weight.semibold.rawValue) ? .semibold : (weight >= Double(UIFont.Weight.medium.rawValue) ? .medium : .regular))
+        if !textStyle.availableWeights.contains(textStyle.weight) {
+            textStyle.weight = textStyle.weight == .medium ? .regular : .bold
+        }
         textStyle.color = Color(annotation.fontColor ?? .black)
     }
 
