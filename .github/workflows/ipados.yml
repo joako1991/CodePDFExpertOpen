@@ -10,6 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache/restore@v4
+        id: mupdf
         with:
           path: Vendor/mupdf
           key: mupdf-linux-1.28.6-nojs-${{ runner.arch }}-v1
@@ -20,7 +21,7 @@ jobs:
       - name: Test production C bridge
         run: python3 scripts/test-native-engine.py --source Vendor/mupdf
       - uses: actions/cache/save@v4
-        if: always()
+        if: ${{ always() && steps.mupdf.outputs.cache-hit != 'true' }}
         with:
           path: Vendor/mupdf
           key: mupdf-linux-1.28.6-nojs-${{ runner.arch }}-v1
@@ -35,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache/restore@v4
+        id: mupdf
         with:
           path: |
             Vendor/mupdf
@@ -49,10 +51,10 @@ jobs:
           bash scripts/test-ios.sh > build/xcodebuild.log 2>&1
           build_status=$?
           set -e
-          python3 scripts/ci-build-summary.py
+          CI_BUILD_STATUS="$build_status" python3 scripts/ci-build-summary.py
           exit "$build_status"
       - uses: actions/cache/save@v4
-        if: always()
+        if: ${{ always() && steps.mupdf.outputs.cache-hit != 'true' }}
         with:
           path: |
             Vendor/mupdf

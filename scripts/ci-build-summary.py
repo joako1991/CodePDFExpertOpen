@@ -8,6 +8,9 @@ from pathlib import Path
 log = Path("build/xcodebuild.log")
 lines = log.read_text(errors="replace").splitlines() if log.exists() else ["No Xcode build log was produced."]
 diagnostics = [line for line in lines if re.search(r"error:|fatal error:|Testing failed:|Test Case.*failed|BUILD FAILED|TEST FAILED|Unable to find a destination", line)]
+if os.environ.get("CI_BUILD_STATUS") == "0":
+    # Negative tests intentionally log MuPDF errors; a successful xcodebuild is authoritative.
+    diagnostics = []
 summary = "## Xcode build and test diagnostics\n\n```text\n"
 summary += "\n".join(diagnostics[:80] or ["No compiler error lines found; inspect the final output below."])
 summary += "\n```\n\n### Final output\n\n```text\n" + "\n".join(lines[-45:]) + "\n```\n"
