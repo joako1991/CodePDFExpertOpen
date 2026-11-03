@@ -310,6 +310,7 @@ final class PDFWorkspace: ObservableObject {
         let color = UIColor(inkColor).withAlphaComponent(type == .highlight ? 0.4 : 1)
         for line in selection.selectionsByLine() {
             for page in line.pages {
+                guard page.document === document else { continue }
                 let bounds = line.bounds(for: page)
                 guard !bounds.isEmpty else { continue }
                 let duplicate = page.annotations.contains {
@@ -334,12 +335,13 @@ final class PDFWorkspace: ObservableObject {
         if let markup = activeTool.markup { applyMarkup(selection, type: markup) }
         else if activeTool == .replaceText, selection.pages.count == 1,
                 selection.selectionsByLine().count == 1, let page = selection.pages.first,
-                let document, let text = selection.string, !text.isEmpty {
+                let document, page.document === document, let text = selection.string, !text.isEmpty {
             textTarget = ContentTextTarget(page: document.index(for: page), bounds: selection.bounds(for: page), text: text)
         }
     }
 
     func requestPlacement(on page: PDFPage, bounds: CGRect, note: Bool = false) {
+        guard page.document === document else { return }
         let clipped = bounds.standardized.intersection(page.bounds(for: .cropBox))
         guard !clipped.isNull, clipped.width >= 12, clipped.height >= 12 else {
             status = "Sélectionnez une zone plus grande pour le texte."
@@ -368,7 +370,7 @@ final class PDFWorkspace: ObservableObject {
         textStyle.size = Double(font.pointSize)
         let name = font.familyName.lowercased()
         textStyle.family = font.fontDescriptor.symbolicTraits.contains(.traitMonoSpace) ? .monospaced :
-            (name.contains("serif") || name.contains("newyork") || name.contains("times") ? .serif : .system)
+            (name.contains("serif") || name.contains("newyork") || name.contains("times") || name.contains("georgia") ? .serif : .system)
         let traits = font.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any]
         let weight = (traits?[.weight] as? NSNumber)?.doubleValue ?? 0
         textStyle.weight = weight >= Double(UIFont.Weight.bold.rawValue) ? .bold :
@@ -411,6 +413,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func moveAnnotation(_ annotation: PDFAnnotation, to bounds: CGRect) {
+        guard annotation.page?.document === document else { return }
         perform { annotation.bounds = bounds; selectedAnnotation = annotation }
     }
 

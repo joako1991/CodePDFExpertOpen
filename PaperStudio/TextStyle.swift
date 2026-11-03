@@ -26,10 +26,16 @@ struct TextStyle {
     var size: Double = 16
     var weight: TextWeight = .regular
     var color: Color = .black
+    var availableWeights: [TextWeight] { family == .serif ? [.regular, .bold] : TextWeight.allCases }
     var font: UIFont {
-        let system = UIFont.systemFont(ofSize: CGFloat(size), weight: weight.uiWeight)
-        let design: UIFontDescriptor.SystemDesign = family == .serif ? .serif : (family == .monospaced ? .monospaced : .default)
-        return UIFont(descriptor: system.fontDescriptor.withDesign(design) ?? system.fontDescriptor, size: CGFloat(size))
+        switch family {
+        case .system: return UIFont.systemFont(ofSize: CGFloat(size), weight: weight.uiWeight)
+        case .monospaced: return UIFont.monospacedSystemFont(ofSize: CGFloat(size), weight: weight.uiWeight)
+        case .serif:
+            // Explicit installed faces preserve bold in both UIKit and PDFKit appearance streams.
+            return UIFont(name: weight == .regular ? "Georgia" : "Georgia-Bold", size: CGFloat(size)) ??
+                UIFont.systemFont(ofSize: CGFloat(size), weight: weight == .regular ? .regular : .bold)
+        }
     }
 }
 
@@ -48,9 +54,12 @@ struct TextStyleControls: View {
         }
         Stepper(value: $style.size, in: 6...96) { Text("Taille : \(Int(style.size)) pt") }
         Picker("Graisse", selection: $style.weight) {
-            ForEach(TextWeight.allCases) { Text(LocalizedStringKey($0.title)).tag($0) }
+            ForEach(style.availableWeights) { Text(LocalizedStringKey($0.title)).tag($0) }
         }
         ColorPicker("Couleur du texte", selection: $style.color, supportsOpacity: false)
+            .onChange(of: style.family) { _ in
+                if !style.availableWeights.contains(style.weight) { style.weight = style.weight == .medium ? .regular : .bold }
+            }
     }
 }
 

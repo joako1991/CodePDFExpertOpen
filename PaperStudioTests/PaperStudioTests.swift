@@ -361,6 +361,11 @@ final class PaperStudioTests: XCTestCase {
         let count = workspace.page?.annotations.count
         workspace.commitToolSelection(selection)
         XCTAssertEqual(workspace.page?.annotations.count, count)
+        workspace.undo()
+        let revision = workspace.revision
+        workspace.commitToolSelection(selection) // Selection belongs to the document replaced by undo.
+        XCTAssertEqual(workspace.revision, revision)
+        XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
     }
 
     func testTextPlacementUsesChosenBoundsAndPersistsFormatting() throws {

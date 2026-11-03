@@ -27,6 +27,7 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationSplitView {
+            ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Label("Paper Studio", systemImage: "doc.richtext")
                     .font(.title2.bold()).padding(.top, 20)
@@ -60,6 +61,7 @@ struct LibraryView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            }
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             .navigationSplitViewColumnWidth(min: 240, ideal: 270)
         } detail: {
