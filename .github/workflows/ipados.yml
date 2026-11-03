@@ -1,0 +1,38 @@
+name: iPadOS build and tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  native-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned MuPDF sources
+        run: bash scripts/fetch-mupdf.sh
+      - name: Build native engine and tools
+        run: make -C Vendor/mupdf -j3 build=release HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no USE_SYSTEM_CURL=no USE_TESSERACT=no USE_ZXINGCPP=no mujs=no tools
+      - name: Test production C bridge
+        run: python3 scripts/test-native-engine.py --source Vendor/mupdf
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-engine-results
+          path: build/native-engine-tests/report.json
+  test:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned MuPDF sources and notices
+        run: bash scripts/fetch-mupdf.sh
+      - name: Build and run PDF workflow tests
+        run: bash scripts/test-ios.sh
+      - name: Retain test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipados-test-results
+          path: build/*.xcresult
+          if-no-files-found: ignore

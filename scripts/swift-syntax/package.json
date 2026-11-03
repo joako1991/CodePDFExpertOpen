@@ -1,0 +1,13 @@
+{
+  "name": "paperstudio-syntax-check",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Optional Linux Swift syntax checking; no Apple SDK type checking",
+  "scripts": { "check": "node_modules/node/bin/node check.cjs" },
+  "devDependencies": {
+    "node": "22.22.0",
+    "xcode": "3.0.1",
+    "tree-sitter-wasms": "0.1.13",
+    "web-tree-sitter": "0.25.10"
+  }
+}

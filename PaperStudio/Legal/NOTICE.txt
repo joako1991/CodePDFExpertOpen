@@ -1,0 +1,17 @@
+Paper Studio 0.1
+Copyright (c) 2026 Paper Studio contributors.
+Distributed under GNU Affero General Public License version 3 or later.
+This program comes with ABSOLUTELY NO WARRANTY.
+You may redistribute and modify it under the terms of the included license.
+
+Application source and build instructions:
+https://github.com/joako1991/CodePDFExpertOpen
+
+MuPDF 1.28.6 — Copyright (c) 2006-2026 Artifex Software, Inc.
+https://github.com/ArtifexSoftware/mupdf/tree/da5f5eb890d7b3fb76903160b5f7f48ba1301492
+GNU AGPL version 3 or later (the commercial alternative is not used).
+MuPDF and its dependencies retain their original notices and licenses.
+The build preparation script collects those notices into Legal/MuPDFNotices.
+
+Apple frameworks are provided by the operating system and are not included as source.
+PDF Expert is a Readdle product. Paper Studio is independent and is not affiliated with Readdle.

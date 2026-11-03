@@ -1,0 +1,10 @@
+.DS_Store
+DerivedData/
+*.xcuserstate
+xcuserdata/
+build/
+node_modules/
+__pycache__/
+*.pyc
+Vendor/
+PaperStudio/Legal/MuPDFNotices/
