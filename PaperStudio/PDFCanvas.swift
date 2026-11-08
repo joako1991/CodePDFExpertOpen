@@ -129,14 +129,19 @@ final class DrawingPDFView: PDFView {
         addGestureRecognizer(annotationTap)
         preview.fillColor = UIColor.clear.cgColor
         preview.lineCap = .round
+        preview.zPosition = 100
+        preview.contentsScale = UIScreen.main.scale
         preview.name = "tool-preview"
-        preview.actions = ["path": NSNull(), "strokeColor": NSNull(), "fillColor": NSNull(), "lineWidth": NSNull()]
+        preview.actions = ["path": NSNull(), "strokeColor": NSNull(), "fillColor": NSNull(), "lineWidth": NSNull(),
+                           "bounds": NSNull(), "position": NSNull()]
         layer.addSublayer(preview)
         selectionFrame.fillColor = UIColor.clear.cgColor
         selectionFrame.strokeColor = UIColor.systemBlue.cgColor
         selectionFrame.lineWidth = 1.5
         selectionFrame.lineDashPattern = [5, 3]
-        selectionFrame.actions = ["path": NSNull()]
+        selectionFrame.zPosition = 101
+        selectionFrame.contentsScale = UIScreen.main.scale
+        selectionFrame.actions = ["path": NSNull(), "bounds": NSNull(), "position": NSNull()]
         layer.addSublayer(selectionFrame)
         NotificationCenter.default.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: self)
         NotificationCenter.default.addObserver(self, selector: #selector(layoutTextEntry), name: .PDFViewScaleChanged, object: self)
@@ -214,6 +219,8 @@ final class DrawingPDFView: PDFView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        preview.frame = bounds
+        selectionFrame.frame = bounds
         configureTool()
         layoutTextEntry()
     }
@@ -455,6 +462,7 @@ final class DrawingPDFView: PDFView {
         input.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
         input.layer.borderColor = UIColor.systemBlue.cgColor
         input.layer.borderWidth = 1
+        input.layer.zPosition = 102
         input.textContainerInset = UIEdgeInsets(top: 2, left: 0, bottom: 0, right: 0)
         input.textContainer.lineFragmentPadding = 0
         input.isScrollEnabled = true

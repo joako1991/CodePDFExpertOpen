@@ -752,4 +752,36 @@ final class PaperStudioTests: XCTestCase {
         workspace.undo()
         XCTAssertTrue(page.annotations.isEmpty, "Opening unchanged text must not create an extra undo step")
     }
+
+    func testLiveUnderlineIsVisibleAboveLateAddedPageContent() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        // PDFKit may insert its opaque page views after our overlay was created.
+        let lateContent = UIView(frame: view.bounds)
+        lateContent.backgroundColor = .white
+        view.addSubview(lateContent)
+        let match = try XCTUnwrap(workspace.document?.findString("Paper Studio", withOptions: []).first)
+        let bounds = match.bounds(for: page)
+        workspace.toggleTool(.underline)
+        view.beginToolGesture(at: view.convert(CGPoint(x: bounds.minX + 1, y: bounds.midY), from: page))
+        view.updateToolGesture(at: view.convert(CGPoint(x: bounds.maxX - 1, y: bounds.midY), from: page))
+        view.renderInteractionFrame()
+        let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "tool-preview" } as? CAShapeLayer)
+        let line = try XCTUnwrap(preview.path).boundingBoxOfPath
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let image = UIGraphicsImageRenderer(size: view.bounds.size, format: format).image { context in
+            view.layer.render(in: context.cgContext)
+        }
+        let pixel = try XCTUnwrap(image.cgImage?.cropping(to: CGRect(x: floor(line.midX), y: floor(line.midY), width: 1, height: 1)))
+        var rgba: [UInt8] = [0, 0, 0, 0]
+        try rgba.withUnsafeMutableBytes { bytes in
+            let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        XCTAssertGreaterThan(Int(rgba[2]), Int(rgba[0]) + 50, "The blue underline must be visible above opaque page content during the drag")
+        XCTAssertTrue(page.annotations.isEmpty, "This must be the live preview, before committing an annotation")
+        view.cancelToolGesture()
+    }
 }
