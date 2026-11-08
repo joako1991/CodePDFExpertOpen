@@ -167,7 +167,7 @@ struct LibraryView: View {
                     ForEach(filtered) { item in
                         Button { selected = item.url } label: {
                             VStack(alignment: .leading, spacing: 12) {
-                                PDFCover(url: item.url).frame(height: 210).frame(maxWidth: .infinity)
+                                PDFCover(url: item.url, modified: item.modified).frame(height: 210).frame(maxWidth: .infinity)
                                     .background(.white, in: RoundedRectangle(cornerRadius: 10)).clipped()
                                 Text(item.title).font(.headline).lineLimit(2).foregroundStyle(.primary)
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(item.size), countStyle: .file))
@@ -191,13 +191,16 @@ struct LibraryView: View {
 
 struct PDFCover: View {
     let url: URL
+    let modified: Date
     @State private var thumbnail: UIImage?
     var body: some View {
         Group {
             if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFit() }
             else { Image(systemName: "doc.richtext").font(.system(size: 50)).foregroundStyle(.indigo) }
-        }.task(id: url) {
-            thumbnail = PDFDocument(url: url)?.page(at: 0)?.thumbnail(of: CGSize(width: 320, height: 420), for: .mediaBox)
+        }.task(id: "\(url.absoluteString)-\(modified.timeIntervalSince1970)") {
+            let image = await PDFThumbnailRenderer.shared.cover(url: url, modified: modified, size: CGSize(width: 320, height: 420))
+            guard !Task.isCancelled else { return }
+            thumbnail = image
         }
     }
 }

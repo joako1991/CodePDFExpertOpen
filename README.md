@@ -1,6 +1,6 @@
 # Paper Studio 0.1 — éditeur PDF pour iPad
 
-Application native en français pour **iPadOS 17+**, sous **AGPL-3.0-or-later**. Interface SwiftUI, lecture/annotations PDFKit, OCR Vision, scanner VisionKit et **édition du contenu avec MuPDF 1.28.6**. Application indépendante de PDF Expert/Readdle, avec son propre nom et sa propre interface.
+Application native en anglais, espagnol et français pour **iPadOS 17+**, sous **AGPL-3.0-or-later**. Interface SwiftUI, lecture/annotations PDFKit, OCR Vision, scanner VisionKit et **édition du contenu avec MuPDF 1.28.6**. Application indépendante de PDF Expert/Readdle, avec son propre nom et sa propre interface.
 
 ## Changements en développement sur `main`
 
@@ -11,6 +11,15 @@ Application native en français pour **iPadOS 17+**, sous **AGPL-3.0-or-later**.
 - Notes et signatures placées à l’endroit touché. Le remplacement de contenu MuPDF s’active également avant de sélectionner la ligne ou l’image.
 
 Ces changements sont sur `main` ; le tag `v0.1` conserve la version publiée. Sur un Mac ayant cloné ce tag, conserver vos modifications locales puis utiliser `git fetch origin`, `git switch main` et `git pull --ff-only origin main` pour récupérer le développement courant.
+
+### Réactivité de l’éditeur
+
+- Le trait, le marquage et les cadres suivent le geste à chaque rafraîchissement de l’écran. Le déplacement et le redimensionnement des annotations s’affichent pendant le glissement ; une seule étape d’annulation est enregistrée au relâchement.
+- L’annulation des annotations, formulaires, rotations et changements de pages conserve les objets modifiés au lieu de sérialiser le PDF entier à chaque action.
+- Les miniatures sont mises en cache et rendues en arrière-plan. Seule la miniature d’une page modifiée est invalidée ; changer d’outil ne relance pas leur rendu.
+- Un doigt utilise l’outil actif ; deux doigts font défiler la page. Le pincement conserve le zoom. Les exports et le traitement MuPDF restent des opérations de document distinctes.
+
+Pour vérifier sur iPad : annoter un PDF long avec le volet des pages ouvert, dessiner rapidement, déplacer/redimensionner une zone de texte, annuler/rétablir, puis enregistrer et rouvrir. La validation sur simulateur ne mesure pas la latence d’un iPad physique.
 
 ## Compiler sur macOS
 

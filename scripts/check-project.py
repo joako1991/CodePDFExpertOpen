@@ -18,7 +18,7 @@ for ref in scheme.iter("BuildableReference"):
 assert len(list(scheme.iter("TestableReference"))) == 1
 tests = (root / "PaperStudioTests/PaperStudioTests.swift").read_text()
 test_count = len(re.findall(r"func test\w+\(", tests))
-assert test_count >= 34, "Expected regression test methods are missing"
+assert test_count >= 44, "Expected regression test methods are missing"
 assert "TARGETED_DEVICE_FAMILY = 2;" in project
 assert "IPHONEOS_DEPLOYMENT_TARGET = 17.0;" in project
 assert "INFOPLIST_KEY_NSCameraUsageDescription" in project

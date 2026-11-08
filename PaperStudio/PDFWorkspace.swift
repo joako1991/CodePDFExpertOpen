@@ -83,6 +83,7 @@ final class PDFWorkspace: ObservableObject {
             switchingTool = false
             pdfView?.clearSelection()
             selectedAnnotation = nil
+            (pdfView as? DrawingPDFView)?.configureTool()
         }
     }
     @Published var inkColor: Color = .indigo {
@@ -100,10 +101,19 @@ final class PDFWorkspace: ObservableObject {
     @Published var bookmarks: Set<Int> = []
     @Published var imageTarget: ContentImageTarget?
     weak var pdfView: PDFView?
-    private struct Snapshot { let data: Data; let pageIndex: Int; let bookmarks: Set<Int> }
-    private var history: [Snapshot] = []
-    private var future: [Snapshot] = []
+    // Ordinary edits retain only what changed. Serializing the entire PDF here blocks input.
+    private struct Edit {
+        let pages: [PDFPage]
+        let cost: Int
+        let layout: Bool
+        let undo: () -> Void
+        let redo: () -> Void
+    }
+    private var history: [Edit] = []
+    private var future: [Edit] = []
     private var undoBytes = 0
+    let thumbnailNamespace = UUID()
+    @Published private(set) var pageVersions: [ObjectIdentifier: Int] = [:]
     private var openedPassword: String?
     private let undoBudget = 64 * 1024 * 1024
     var canUndo: Bool { !history.isEmpty }
@@ -134,64 +144,75 @@ final class PDFWorkspace: ObservableObject {
         revision += 1
     }
 
-    private func snapshot() throws -> Snapshot {
-        guard let document, !document.isLocked, document.allowsDocumentChanges,
-              let data = document.dataRepresentation() else { throw StudioError.writeFailed }
-        return Snapshot(data: data, pageIndex: pageIndex, bookmarks: bookmarks)
+    private var canEdit: Bool {
+        document?.isLocked == false && document?.allowsDocumentChanges == true
     }
 
-    private func pushHistory(_ snapshot: Snapshot) {
-        history.append(snapshot)
-        undoBytes += snapshot.data.count
-        while history.count > 12 || (undoBytes > undoBudget && history.count > 1) {
-            undoBytes -= history.removeFirst().data.count
+    private func pushHistory(_ edit: Edit) {
+        history.append(edit)
+        undoBytes += edit.cost
+        while history.count > 100 || (undoBytes > undoBudget && history.count > 1) {
+            undoBytes -= history.removeFirst().cost
         }
     }
 
-    private func restore(_ snapshot: Snapshot) {
-        guard let restored = PDFDocument(data: snapshot.data) else { return }
-        if restored.isLocked, let openedPassword { _ = restored.unlock(withPassword: openedPassword) }
-        document = restored
-        pageIndex = min(snapshot.pageIndex, max(0, restored.pageCount - 1))
-        bookmarks = snapshot.bookmarks
-        selectedAnnotation = nil
-        searchResults = []
-        pdfView?.highlightedSelections = nil
-        revision += 1
+    private func changed(_ pages: [PDFPage], layout: Bool) {
+        var versions = pageVersions
+        for page in pages { versions[ObjectIdentifier(page), default: 0] += 1 }
+        pageVersions = versions
         dirty = true
+        revision += 1
+        status = "Modifications non enregistrées"
+        // Invalidate only visible page regions; tool/settings changes do not repaint the PDF.
+        if let view = pdfView {
+            if layout {
+                view.layoutDocumentView()
+                if let page { view.go(to: page) }
+            }
+            for page in pages where page.document === view.document {
+                view.setNeedsDisplay(view.convert(page.bounds(for: .cropBox), from: page))
+            }
+        }
     }
 
-    func perform(_ operation: () throws -> Void) {
-        do {
-            let before = try snapshot()
-            try operation()
-            pushHistory(before)
-            future = []
-            dirty = true
-            revision += 1
-            status = "Modifications non enregistrées"
-        } catch { self.error = error.localizedDescription }
+    private func commit(pages: [PDFPage], cost: Int = 1024, layout: Bool = false,
+                        undo: @escaping () -> Void, redo: @escaping () -> Void) {
+        guard canEdit else { error = StudioError.writeFailed.localizedDescription; return }
+        let edit = Edit(pages: pages, cost: cost, layout: layout, undo: undo, redo: redo)
+        edit.redo()
+        pushHistory(edit)
+        future.removeAll()
+        changed(pages, layout: layout)
     }
 
     func undo() {
-        guard let before = history.last else { return }
-        do {
-            let current = try snapshot()
-            history.removeLast()
-            undoBytes -= before.data.count
-            future.append(current)
-            restore(before)
-        } catch { self.error = error.localizedDescription }
+        guard canEdit, let edit = history.popLast() else { return }
+        (pdfView as? DrawingPDFView)?.cancelToolGesture()
+        pdfView?.clearSelection()
+        selectedAnnotation = nil
+        undoBytes -= edit.cost
+        edit.undo()
+        future.append(edit)
+        changed(edit.pages, layout: edit.layout)
     }
 
     func redo() {
-        guard let next = future.last else { return }
-        do {
-            let current = try snapshot()
-            future.removeLast()
-            pushHistory(current)
-            restore(next)
-        } catch { self.error = error.localizedDescription }
+        guard canEdit, let edit = future.popLast() else { return }
+        (pdfView as? DrawingPDFView)?.cancelToolGesture()
+        pdfView?.clearSelection()
+        selectedAnnotation = nil
+        edit.redo()
+        pushHistory(edit)
+        changed(edit.pages, layout: edit.layout)
+    }
+
+    private func addAnnotations(_ additions: [(PDFPage, PDFAnnotation)], cost: Int = 1024) {
+        guard !additions.isEmpty else { return }
+        commit(pages: additions.map { $0.0 }, cost: cost, undo: {
+            for (page, annotation) in additions { page.removeAnnotation(annotation) }
+        }, redo: {
+            for (page, annotation) in additions { page.addAnnotation(annotation) }
+        })
     }
 
     func toggleBookmark() {
@@ -207,7 +228,10 @@ final class PDFWorkspace: ObservableObject {
     func setFormValue(_ annotation: PDFAnnotation, value: String) {
         guard annotation.type == "Widget", annotation.widgetFieldType == .text || annotation.widgetFieldType == .choice,
               !annotation.isReadOnly else { return }
-        perform { annotation.widgetStringValue = value }
+        guard let page = annotation.page, page.document === document, annotation.widgetStringValue != value else { return }
+        let before = annotation.widgetStringValue
+        commit(pages: [page], undo: { annotation.widgetStringValue = before },
+               redo: { annotation.widgetStringValue = value })
     }
 
     func selectedTextTarget() throws -> ContentTextTarget {
@@ -221,9 +245,10 @@ final class PDFWorkspace: ObservableObject {
 
     func replaceContent(operation: MuPDFEngine.Operation, page: Int, region: CGRect,
                         text: String = "", fontSize: Float = 12, image: Data = Data()) async throws {
-        let before = try snapshot()
+        guard let before = document, canEdit, let data = before.dataRepresentation() else { throw StudioError.writeFailed }
+        let oldIndex = pageIndex
         let previousRevision = revision
-        let output = try await MuPDFEngine.processAsync(data: before.data, password: openedPassword ?? "",
+        let output = try await MuPDFEngine.processAsync(data: data, password: openedPassword ?? "",
             operation: operation, page: page, region: region, text: text, fontSize: fontSize, image: image)
         try Task.checkCancellation()
         guard revision == previousRevision else {
@@ -233,18 +258,23 @@ final class PDFWorkspace: ObservableObject {
         if updated.isLocked {
             guard updated.unlock(withPassword: openedPassword ?? "") else { throw StudioError.invalidPDF }
         }
-        pushHistory(before)
-        future = []
-        document = updated
-        pageIndex = min(page, max(0, updated.pageCount - 1))
+        commit(pages: [], cost: data.count + output.count, undo: { [weak self] in
+            self?.installDocument(before, pageIndex: oldIndex)
+        }, redo: { [weak self] in
+            self?.installDocument(updated, pageIndex: page)
+        })
+        imageTarget = nil
+        status = "Contenu PDF modifié avec MuPDF — enregistrez le document"
+    }
+
+    private func installDocument(_ document: PDFDocument, pageIndex: Int) {
+        (pdfView as? DrawingPDFView)?.cancelToolGesture()
+        pdfView?.clearSelection()
+        self.document = document
+        self.pageIndex = min(pageIndex, max(0, document.pageCount - 1))
         selectedAnnotation = nil
         searchResults = []
         pdfView?.highlightedSelections = nil
-        imageTarget = nil
-        pdfView?.clearSelection()
-        dirty = true
-        revision += 1
-        status = "Contenu PDF modifié avec MuPDF — enregistrez le document"
     }
 
     func exportWord() async throws -> URL {
@@ -262,6 +292,7 @@ final class PDFWorkspace: ObservableObject {
 
     @discardableResult
     func save() -> Bool {
+        (pdfView as? DrawingPDFView)?.cancelToolGesture()
         do {
             guard let document, !document.isLocked else { throw StudioError.writeFailed }
             var options: [PDFDocumentWriteOption: Any] = [:]
@@ -321,14 +352,12 @@ final class PDFWorkspace: ObservableObject {
             }
         }
         guard !additions.isEmpty else { return }
-        perform {
-            for (page, bounds) in additions {
-                let annotation = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
-                annotation.color = color
-                let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
-                page.addAnnotation(annotation)
-            }
-        }
+        addAnnotations(additions.map { page, bounds in
+            let annotation = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
+            annotation.color = color
+            let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
+            return (page, annotation)
+        })
     }
 
     func commitToolSelection(_ selection: PDFSelection) {
@@ -353,16 +382,14 @@ final class PDFWorkspace: ObservableObject {
     func placeText(_ text: String, at placement: AnnotationPlacement) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               placement.page.document === document else { return }
-        perform {
-            let annotation = PDFAnnotation(bounds: placement.bounds, forType: placement.note ? .text : .freeText, withProperties: nil)
-            annotation.contents = text
-            annotation.font = textStyle.font
-            annotation.fontColor = UIColor(textStyle.color)
-            annotation.color = placement.note ? .systemYellow : .clear
-            let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
-            placement.page.addAnnotation(annotation)
-            selectedAnnotation = annotation
-        }
+        let annotation = PDFAnnotation(bounds: placement.bounds, forType: placement.note ? .text : .freeText, withProperties: nil)
+        annotation.contents = text
+        annotation.font = textStyle.font
+        annotation.fontColor = UIColor(textStyle.color)
+        annotation.color = placement.note ? .systemYellow : .clear
+        let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
+        addAnnotations([(placement.page, annotation)], cost: 1024 + text.utf8.count)
+        if annotation.page != nil { selectedAnnotation = annotation }
     }
 
     func readTextStyle(from annotation: PDFAnnotation) {
@@ -382,42 +409,48 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func updateTextAnnotation(_ annotation: PDFAnnotation, text: String) {
-        guard annotation.page?.document === document else { return }
-        perform {
+        guard let page = annotation.page, page.document === document else { return }
+        let before = (annotation.contents, annotation.font, annotation.fontColor)
+        let font = textStyle.font, color = UIColor(textStyle.color)
+        commit(pages: [page], cost: 1024 + text.utf8.count + (before.0?.utf8.count ?? 0), undo: {
+            annotation.contents = before.0
+            annotation.font = before.1
+            annotation.fontColor = before.2
+        }, redo: {
             annotation.contents = text
             if annotation.type == "FreeText" {
-                annotation.font = textStyle.font
-                annotation.fontColor = UIColor(textStyle.color)
+                annotation.font = font
+                annotation.fontColor = color
             }
-        }
+        })
     }
 
     func addDrawing(on page: PDFPage, points: [CGPoint], tool: CanvasTool) {
-        guard points.count > 1 else { return }
+        guard page.document === document, points.count > 1 else { return }
         let xs = points.map(\.x), ys = points.map(\.y)
         guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return }
         let bounds = CGRect(x: minX, y: minY, width: max(1, maxX - minX), height: max(1, maxY - minY)).insetBy(dx: -lineWidth, dy: -lineWidth)
-        perform {
-            let subtype: PDFAnnotationSubtype = tool == .pen ? .ink : (tool == .oval ? .circle : .square)
-            let annotation = PDFAnnotation(bounds: bounds, forType: subtype, withProperties: nil)
-            annotation.color = UIColor(inkColor)
-            let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
-            if tool == .pen {
-                let path = UIBezierPath()
-                for (index, point) in points.enumerated() {
-                    let local = CGPoint(x: point.x - bounds.minX, y: point.y - bounds.minY)
-                    if index == 0 { path.move(to: local) } else { path.addLine(to: local) }
-                }
-                annotation.add(path)
+        let subtype: PDFAnnotationSubtype = tool == .pen ? .ink : (tool == .oval ? .circle : .square)
+        let annotation = PDFAnnotation(bounds: bounds, forType: subtype, withProperties: nil)
+        annotation.color = UIColor(inkColor)
+        let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
+        if tool == .pen {
+            let path = UIBezierPath()
+            for (index, point) in points.enumerated() {
+                let local = CGPoint(x: point.x - bounds.minX, y: point.y - bounds.minY)
+                if index == 0 { path.move(to: local) } else { path.addLine(to: local) }
             }
-            page.addAnnotation(annotation)
-            selectedAnnotation = annotation
+            annotation.add(path)
         }
+        addAnnotations([(page, annotation)], cost: 1024 + points.count * MemoryLayout<CGPoint>.stride)
+        if annotation.page != nil { selectedAnnotation = annotation }
     }
 
     func moveAnnotation(_ annotation: PDFAnnotation, to bounds: CGRect) {
-        guard annotation.page?.document === document else { return }
-        perform { annotation.bounds = bounds; selectedAnnotation = annotation }
+        guard let page = annotation.page, page.document === document, annotation.bounds != bounds else { return }
+        let before = annotation.bounds
+        commit(pages: [page], undo: { annotation.bounds = before }, redo: { annotation.bounds = bounds })
+        selectedAnnotation = annotation
     }
 
     func resizeSelected(by factor: CGFloat) {
@@ -436,64 +469,79 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func removeAnnotation(_ annotation: PDFAnnotation) {
-        guard annotation.type != "Widget", let page = annotation.page else { return }
-        perform { page.removeAnnotation(annotation); selectedAnnotation = nil }
+        guard annotation.type != "Widget", let page = annotation.page, page.document === document else { return }
+        // Preserve stacking order when undoing deletion, without copying page contents.
+        let following = Array(page.annotations.drop(while: { $0 !== annotation }).dropFirst())
+        commit(pages: [page], undo: {
+            for item in following { page.removeAnnotation(item) }
+            page.addAnnotation(annotation)
+            for item in following { page.addAnnotation(item) }
+        }, redo: { page.removeAnnotation(annotation) })
+        selectedAnnotation = nil
     }
 
     func updateSelectedText(_ text: String) {
-        guard let annotation = selectedAnnotation else { return }
-        perform { annotation.contents = text }
+        guard let annotation = selectedAnnotation, let page = annotation.page, page.document === document,
+              annotation.contents != text else { return }
+        let before = annotation.contents
+        commit(pages: [page], undo: { annotation.contents = before }, redo: { annotation.contents = text })
     }
 
     func addText(_ text: String, note: Bool) {
         guard let page, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        perform {
-            let box = page.bounds(for: .mediaBox)
-            let width = min(260.0, box.width * 0.7)
-            let annotation = PDFAnnotation(bounds: CGRect(x: box.midX - width / 2, y: box.midY, width: note ? 30 : width, height: note ? 30 : 100), forType: note ? .text : .freeText, withProperties: nil)
-            annotation.contents = text
-            annotation.font = .systemFont(ofSize: 16)
-            annotation.fontColor = .black
-            annotation.color = note ? .systemYellow : .clear
-            page.addAnnotation(annotation)
-        }
+        let box = page.bounds(for: .mediaBox)
+        let width = min(260.0, box.width * 0.7)
+        let annotation = PDFAnnotation(bounds: CGRect(x: box.midX - width / 2, y: box.midY, width: note ? 30 : width, height: note ? 30 : 100), forType: note ? .text : .freeText, withProperties: nil)
+        annotation.contents = text
+        annotation.font = .systemFont(ofSize: 16)
+        annotation.fontColor = .black
+        annotation.color = note ? .systemYellow : .clear
+        addAnnotations([(page, annotation)], cost: 1024 + text.utf8.count)
     }
 
     func addSignature(_ strokes: [[CGPoint]], size: CGSize, on targetPage: PDFPage? = nil, at point: CGPoint? = nil) {
-        guard let page = targetPage ?? page, size.width > 0, size.height > 0, !strokes.isEmpty else { return }
-        perform {
-            let box = page.bounds(for: .cropBox)
-            let width = min(240.0, box.width * 0.7)
-            let height = min(box.height, width * size.height / size.width)
-            let anchor = point ?? CGPoint(x: box.midX - width / 2, y: box.midY + height / 2)
-            let x = min(max(anchor.x, box.minX), box.maxX - width)
-            let y = min(max(anchor.y - height, box.minY), box.maxY - height)
-            let annotation = PDFAnnotation(bounds: CGRect(x: x, y: y, width: width, height: height), forType: .ink, withProperties: nil)
-            annotation.color = .black
-            let border = PDFBorder(); border.lineWidth = 2; annotation.border = border
-            for stroke in strokes where stroke.count > 1 {
-                let path = UIBezierPath()
-                for (index, point) in stroke.enumerated() {
-                    let mapped = CGPoint(x: point.x / size.width * width, y: (1 - point.y / size.height) * height)
-                    if index == 0 { path.move(to: mapped) } else { path.addLine(to: mapped) }
-                }
-                annotation.add(path)
+        guard let page = targetPage ?? page, page.document === document,
+              size.width > 0, size.height > 0, strokes.contains(where: { $0.count > 1 }) else { return }
+        let box = page.bounds(for: .cropBox)
+        let width = min(240.0, box.width * 0.7)
+        let height = min(box.height, width * size.height / size.width)
+        let anchor = point ?? CGPoint(x: box.midX - width / 2, y: box.midY + height / 2)
+        let x = min(max(anchor.x, box.minX), box.maxX - width)
+        let y = min(max(anchor.y - height, box.minY), box.maxY - height)
+        let annotation = PDFAnnotation(bounds: CGRect(x: x, y: y, width: width, height: height), forType: .ink, withProperties: nil)
+        annotation.color = .black
+        let border = PDFBorder(); border.lineWidth = 2; annotation.border = border
+        for stroke in strokes where stroke.count > 1 {
+            let path = UIBezierPath()
+            for (index, point) in stroke.enumerated() {
+                let mapped = CGPoint(x: point.x / size.width * width, y: (1 - point.y / size.height) * height)
+                if index == 0 { path.move(to: mapped) } else { path.addLine(to: mapped) }
             }
-            page.addAnnotation(annotation)
+            annotation.add(path)
         }
+        addAnnotations([(page, annotation)], cost: 1024 + strokes.reduce(0) { $0 + $1.count * MemoryLayout<CGPoint>.stride })
     }
 
-    func rotate() { guard let page else { return }; perform { page.rotation = (page.rotation + 90) % 360 } }
+    func rotate() {
+        guard let page else { return }
+        let before = page.rotation
+        commit(pages: [page], layout: true, undo: { page.rotation = before }, redo: { page.rotation = (before + 90) % 360 })
+    }
 
     func deletePage() {
-        guard let document else { return }
+        guard let document, let removed = page else { return }
         guard document.pageCount > 1 else { error = StudioError.lastPage.localizedDescription; return }
-        perform {
-            document.removePage(at: pageIndex)
-            bookmarks = Set(bookmarks.filter { $0 != pageIndex }.map { $0 > pageIndex ? $0 - 1 : $0 })
-            pageIndex = min(pageIndex, document.pageCount - 1)
-            selectedAnnotation = nil
-        }
+        let index = pageIndex, beforeBookmarks = bookmarks
+        commit(pages: [], layout: true, undo: { [weak self] in
+            document.insert(removed, at: index)
+            self?.bookmarks = beforeBookmarks
+            self?.pageIndex = index
+        }, redo: { [weak self] in
+            document.removePage(at: index)
+            self?.bookmarks = Set(beforeBookmarks.filter { $0 != index }.map { $0 > index ? $0 - 1 : $0 })
+            self?.pageIndex = min(index, document.pageCount - 1)
+            self?.selectedAnnotation = nil
+        })
         go(to: pageIndex)
     }
 
@@ -501,24 +549,29 @@ final class PDFWorkspace: ObservableObject {
         guard let document, let page else { return }
         let target = pageIndex + offset
         guard (0..<document.pageCount).contains(target) else { return }
-        perform {
-            document.removePage(at: pageIndex)
+        let old = pageIndex, beforeBookmarks = bookmarks
+        commit(pages: [], layout: true, undo: { [weak self] in
+            document.removePage(at: target)
+            document.insert(page, at: old)
+            self?.bookmarks = beforeBookmarks
+            self?.pageIndex = old
+        }, redo: { [weak self] in
+            document.removePage(at: old)
             document.insert(page, at: target)
-            let old = pageIndex
-            bookmarks = Set(bookmarks.map { index in
+            self?.bookmarks = Set(beforeBookmarks.map { index in
                 if index == old { return target }
                 if old < target && index > old && index <= target { return index - 1 }
                 if target < old && index >= target && index < old { return index + 1 }
                 return index
             })
-            pageIndex = target
-        }
+            self?.pageIndex = target
+        })
         go(to: target)
     }
 
     func merge(_ urls: [URL]) {
-        perform {
-            guard let document else { throw StudioError.invalidPDF }
+        do {
+            guard let document, canEdit else { throw StudioError.invalidPDF }
             var additions: [PDFPage] = []
             for url in urls {
                 let access = url.startAccessingSecurityScopedResource()
@@ -529,8 +582,14 @@ final class PDFWorkspace: ObservableObject {
                     additions.append(page)
                 }
             }
-            for page in additions { document.insert(page, at: document.pageCount) }
-        }
+            guard !additions.isEmpty else { return }
+            let first = document.pageCount
+            commit(pages: [], layout: true, undo: {
+                for _ in additions { document.removePage(at: first) }
+            }, redo: {
+                for (offset, page) in additions.enumerated() { document.insert(page, at: first + offset) }
+            })
+        } catch { self.error = error.localizedDescription }
     }
 
     func export(password: String? = nil, currentPageOnly: Bool = false) -> URL? {

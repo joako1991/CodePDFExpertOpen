@@ -2,6 +2,10 @@
 
 ## En développement — main
 
+- Réactivité : prévisualisation par rafraîchissement, fin du délai fixe de sélection et des animations implicites de tracé, déplacement/redimensionnement visibles pendant le geste.
+- Historique d’annulation par opérations ; les annotations et gestes ne copient plus le PDF entier. Historique compatible avec les remplacements de document MuPDF.
+- Miniatures en arrière-plan, cache limité en mémoire et invalidation de la seule page modifiée ; défilement à deux doigts pendant l’édition.
+
 - Interface en anglais, espagnol et français avec choix persistant et changement immédiat.
 - Outils activables/désactivables, réglages avant usage, application automatique du marquage lors de la sélection.
 - Zones de texte placées par toucher/glissement, poignée de redimensionnement, police/taille/graisse/couleur configurables.

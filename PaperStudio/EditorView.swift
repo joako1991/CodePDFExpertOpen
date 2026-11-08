@@ -151,8 +151,10 @@ struct EditorView: View {
                 ForEach(0..<(workspace.document?.pageCount ?? 0), id: \.self) { index in
                     Button { workspace.go(to: index) } label: {
                         VStack(spacing: 6) {
-                            if let image = workspace.document?.page(at: index)?.thumbnail(of: CGSize(width: 110, height: 150), for: .mediaBox) {
-                                Image(uiImage: image).resizable().scaledToFit().frame(width: 100, height: 135)
+                            if let page = workspace.document?.page(at: index) {
+                                PDFPageThumbnail(page: page, version: workspace.pageVersions[ObjectIdentifier(page), default: 0],
+                                                 namespace: workspace.thumbnailNamespace)
+                                    .equatable().frame(width: 100, height: 135)
                                     .background(.white)
                                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(workspace.pageIndex == index ? Color.indigo : Color.clear, lineWidth: 3))
                             }
@@ -160,7 +162,7 @@ struct EditorView: View {
                         }
                     }.buttonStyle(.plain).accessibilityLabel("Page \(index + 1)")
                 }
-            }.padding(.vertical, 20).id(workspace.revision)
+            }.padding(.vertical, 20)
         }.background(Color(uiColor: .secondarySystemBackground))
     }
 

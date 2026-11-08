@@ -4,6 +4,24 @@ import Combine
 import SwiftUI
 @testable import PaperStudio
 
+private final class SerializationTrackingDocument: PDFDocument {
+    var serializations = 0
+    override func dataRepresentation() -> Data? {
+        serializations += 1
+        return super.dataRepresentation()
+    }
+}
+
+private final class ThreadTrackingPage: PDFPage {
+    var renderedOnMainThread = true
+    var renderCount = 0
+    override func thumbnail(of size: CGSize, for box: PDFDisplayBox) -> UIImage {
+        renderedOnMainThread = Thread.isMainThread
+        renderCount += 1
+        return super.thumbnail(of: size, for: box)
+    }
+}
+
 @MainActor
 final class PaperStudioTests: XCTestCase {
     var folder: URL!
@@ -363,7 +381,8 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(workspace.page?.annotations.count, count)
         workspace.undo()
         let revision = workspace.revision
-        workspace.commitToolSelection(selection) // Selection belongs to the document replaced by undo.
+        let foreign = try XCTUnwrap(PDFDocument(url: workspace.url)?.findString("Paper Studio", withOptions: []).first)
+        workspace.commitToolSelection(foreign)
         XCTAssertEqual(workspace.revision, revision)
         XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
     }
@@ -457,5 +476,198 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(L10n.tr("Souligner", language: .french), "Souligner")
         XCTAssertEqual(L10n.tr("Mot de passe incorrect.", language: .english), "Incorrect password.")
         XCTAssertEqual(L10n.tr("Zone de texte", language: .spanish), "Cuadro de texto")
+    }
+
+    func testInteractiveEditsAndUndoDoNotSerializeOrReplaceLargeDocument() throws {
+        let url = try library.createWelcome()
+        let document = try XCTUnwrap(SerializationTrackingDocument(url: url))
+        let page = try XCTUnwrap(document.page(at: 0))
+        for _ in 0..<99 { document.insert(try XCTUnwrap(page.copy() as? PDFPage), at: document.pageCount) }
+        let workspace = PDFWorkspace(url: url)
+        workspace.document = document
+        workspace.addText("Immediate", note: true)
+        let annotation = try XCTUnwrap(page.annotations.first)
+        workspace.moveAnnotation(annotation, to: annotation.bounds.offsetBy(dx: 10, dy: 10))
+        workspace.removeAnnotation(annotation)
+        for _ in 0..<3 { workspace.undo() }
+        XCTAssertTrue(page.annotations.isEmpty)
+        for _ in 0..<3 { workspace.redo() }
+        XCTAssertTrue(page.annotations.isEmpty)
+        workspace.rotate()
+        workspace.undo()
+        XCTAssertEqual(page.rotation, 0)
+        XCTAssertTrue(workspace.document === document)
+        XCTAssertTrue(workspace.page === page)
+        XCTAssertEqual(document.serializations, 0, "Interactive edits must not serialize a 100-page PDF")
+    }
+
+    func testUndoRedoAcrossNativeReplacementKeepsAnnotationHistoryValid() async throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let originalDocument = try XCTUnwrap(workspace.document)
+        workspace.addText("Before replacement", note: true)
+        let selection = try XCTUnwrap(originalDocument.findString("Paper Studio", withOptions: []).first)
+        try await workspace.replaceContent(operation: .replaceText, page: 0,
+            region: selection.bounds(for: try XCTUnwrap(selection.pages.first)), text: "Studio", fontSize: 6)
+        let updatedDocument = try XCTUnwrap(workspace.document)
+        workspace.addText("After replacement", note: true)
+        workspace.undo()
+        XCTAssertFalse(workspace.page?.annotations.contains { $0.contents == "After replacement" } == true)
+        workspace.undo()
+        XCTAssertTrue(workspace.document === originalDocument)
+        workspace.undo()
+        XCTAssertFalse(workspace.page?.annotations.contains { $0.contents == "Before replacement" } == true)
+        workspace.redo()
+        workspace.redo()
+        XCTAssertTrue(workspace.document === updatedDocument)
+        workspace.redo()
+        XCTAssertTrue(workspace.page?.annotations.contains { $0.contents == "After replacement" } == true)
+        XCTAssertTrue(workspace.page?.annotations.contains { $0.contents == "Before replacement" } == true)
+    }
+
+    func testOnlyEditedPageThumbnailChangesAndToolSwitchesDoNotInvalidateIt() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        workspace.merge([workspace.url])
+        let first = try XCTUnwrap(workspace.page)
+        let second = try XCTUnwrap(workspace.document?.page(at: 1))
+        let initial = workspace.pageVersions
+        workspace.toggleTool(.underline)
+        workspace.toggleTool(.text)
+        workspace.textStyle.size = 30
+        XCTAssertEqual(workspace.pageVersions, initial)
+        workspace.addText("Changed", note: true)
+        XCTAssertEqual(workspace.pageVersions[ObjectIdentifier(first)], 1)
+        XCTAssertNil(workspace.pageVersions[ObjectIdentifier(second)])
+        workspace.undo()
+        XCTAssertEqual(workspace.pageVersions[ObjectIdentifier(first)], 2)
+        XCTAssertNil(workspace.pageVersions[ObjectIdentifier(second)])
+    }
+
+    func testThumbnailsRenderOffMainThreadAndReuseCachedImage() async throws {
+        let page = ThreadTrackingPage()
+        page.setBounds(CGRect(x: 0, y: 0, width: 595, height: 842), for: .mediaBox)
+        let renderer = PDFThumbnailRenderer()
+        let size = CGSize(width: 110, height: 150)
+        let rendered = await renderer.image(page: page, key: "page-v1", size: size)
+        let cached = await renderer.image(page: page, key: "page-v1", size: size)
+        let first = try XCTUnwrap(rendered), second = try XCTUnwrap(cached)
+        XCTAssertFalse(page.renderedOnMainThread)
+        XCTAssertEqual(page.renderCount, 1)
+        XCTAssertTrue(first === second)
+        _ = await renderer.image(page: page, key: "page-v2", size: size)
+        XCTAssertEqual(page.renderCount, 2)
+    }
+
+    func testThumbnailCopyIsIndependentOfLiveAnnotations() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        workspace.addText("Live", note: true)
+        let page = try XCTUnwrap(workspace.page)
+        let annotation = try XCTUnwrap(page.annotations.first)
+        let copy = try XCTUnwrap(page.copy() as? PDFPage)
+        let copiedAnnotation = try XCTUnwrap(copy.annotations.first)
+        XCTAssertFalse(copiedAnnotation === annotation)
+        copiedAnnotation.contents = "Worker copy"
+        XCTAssertEqual(annotation.contents, "Live")
+    }
+
+    private func canvas(_ workspace: PDFWorkspace) -> DrawingPDFView {
+        let view = DrawingPDFView(frame: CGRect(x: 0, y: 0, width: 700, height: 1000))
+        view.document = workspace.document
+        view.workspace = workspace
+        workspace.pdfView = view
+        view.autoScales = true
+        view.layoutDocumentView()
+        view.layoutIfNeeded()
+        view.configureTool()
+        return view
+    }
+
+    func testDrawingPreviewUpdatesBeforeCommitAndIncludesFinalTouch() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.toggleTool(.pen)
+        view.beginToolGesture(at: view.convert(CGPoint(x: 50, y: 100), from: page))
+        view.updateToolGesture(at: view.convert(CGPoint(x: 100, y: 130), from: page))
+        view.renderInteractionFrame()
+        let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "tool-preview" } as? CAShapeLayer)
+        XCTAssertFalse(try XCTUnwrap(preview.path).isEmpty)
+        XCTAssertTrue(preview.actions?["path"] is NSNull)
+        XCTAssertTrue(page.annotations.isEmpty)
+        XCTAssertFalse(workspace.canUndo)
+        let final = CGPoint(x: 160, y: 170)
+        view.endToolGesture(at: view.convert(final, from: page))
+        XCTAssertEqual(page.annotations.count, 1)
+        XCTAssertTrue(try XCTUnwrap(page.annotations.first).bounds.contains(final))
+        XCTAssertNil(preview.path)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty)
+        XCTAssertFalse(workspace.canUndo)
+    }
+
+    func testLiveMoveUpdatesBoundsAndCancelledGestureRestoresThem() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.requestPlacement(on: page, bounds: CGRect(x: 50, y: 80, width: 200, height: 80))
+        workspace.placeText("Move me", at: try XCTUnwrap(workspace.placement))
+        let annotation = try XCTUnwrap(workspace.selectedAnnotation)
+        let original = annotation.bounds, revision = workspace.revision
+        workspace.toggleTool(.move)
+        view.beginToolGesture(at: view.convert(CGPoint(x: original.midX, y: original.midY), from: page))
+        view.updateToolGesture(at: view.convert(CGPoint(x: original.midX + 30, y: original.midY + 20), from: page))
+        view.renderInteractionFrame()
+        XCTAssertEqual(annotation.bounds.minX, original.minX + 30, accuracy: 0.01)
+        XCTAssertEqual(workspace.revision, revision)
+        view.cancelToolGesture()
+        XCTAssertEqual(annotation.bounds, original)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty, "Cancelling must not add an undo entry")
+    }
+
+    func testTextBoxDragUsesFinalTouchAndDoesNotCreateContentUntilApplied() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.toggleTool(.text)
+        view.beginToolGesture(at: view.convert(CGPoint(x: 50, y: 100), from: page))
+        view.endToolGesture(at: view.convert(CGPoint(x: 250, y: 180), from: page))
+        let bounds = try XCTUnwrap(workspace.placement?.bounds)
+        XCTAssertEqual(bounds.minX, 50, accuracy: 0.01)
+        XCTAssertEqual(bounds.width, 200, accuracy: 0.01)
+        XCTAssertEqual(bounds.height, 80, accuracy: 0.01)
+        XCTAssertTrue(page.annotations.isEmpty)
+        XCTAssertFalse(workspace.dirty)
+    }
+
+    func testNativeSelectionAppliesOnNextFrameWithoutDebounce() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        workspace.toggleTool(.underline)
+        view.setCurrentSelection(try XCTUnwrap(workspace.document?.findString("Paper Studio", withOptions: []).first), animate: false)
+        view.renderInteractionFrame()
+        XCTAssertTrue(workspace.page?.annotations.contains { $0.type == "Underline" } == true)
+        XCTAssertNil(view.currentSelection)
+    }
+
+    func testTextResizeIsLiveAndCommitsOnlyOneUndoStep() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.requestPlacement(on: page, bounds: CGRect(x: 50, y: 300, width: 200, height: 80))
+        workspace.placeText("Resize me", at: try XCTUnwrap(workspace.placement))
+        let annotation = try XCTUnwrap(workspace.selectedAnnotation), original = annotation.bounds
+        workspace.toggleTool(.move)
+        workspace.selectedAnnotation = annotation
+        let rect = view.convert(original, from: page)
+        view.beginToolGesture(at: CGPoint(x: rect.maxX, y: rect.maxY))
+        let final = CGPoint(x: rect.maxX + 60, y: rect.maxY + 30)
+        view.updateToolGesture(at: final)
+        view.renderInteractionFrame()
+        XCTAssertGreaterThan(annotation.bounds.width, original.width)
+        view.endToolGesture(at: final)
+        workspace.undo()
+        XCTAssertEqual(annotation.bounds, original)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty)
     }
 }
