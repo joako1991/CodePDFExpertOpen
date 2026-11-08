@@ -780,7 +780,8 @@ final class PaperStudioTests: XCTestCase {
                 bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
             context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
         }
-        XCTAssertGreaterThan(Int(rgba[2]), Int(rgba[0]) + 50, "The blue underline must be visible above opaque page content during the drag")
+        XCTAssertGreaterThan(Int(rgba[2]), Int(rgba[0]) + 50,
+            "The blue underline must be visible during the drag: line=\(line), frame=\(preview.frame), color=\(String(describing: preview.strokeColor)), order=\(view.layer.sublayers?.map { String(describing: type(of: $0)) } ?? [])")
         XCTAssertTrue(page.annotations.isEmpty, "This must be the live preview, before committing an annotation")
         view.cancelToolGesture()
     }

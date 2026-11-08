@@ -197,6 +197,7 @@ final class DrawingPDFView: PDFView {
 
     // One visual update per display refresh, with no fixed debounce or implicit layer animation.
     func renderInteractionFrame() {
+        keepFeedbackAbovePages()
         if strokePage != nil {
             if previewDirty {
                 previewDirty = false
@@ -221,8 +222,19 @@ final class DrawingPDFView: PDFView {
         super.layoutSubviews()
         preview.frame = bounds
         selectionFrame.frame = bounds
+        keepFeedbackAbovePages()
         configureTool()
         layoutTextEntry()
+    }
+
+    private func keepFeedbackAbovePages() {
+        let expected: [CALayer] = [preview, selectionFrame] + (textInput.map { [$0.layer] } ?? [])
+        let actual = Array(layer.sublayers?.suffix(expected.count) ?? [])
+        guard actual.count != expected.count || zip(actual, expected).contains(where: { $0.0 !== $0.1 }) else { return }
+        // PDFKit can insert opaque page views later. Preserve drawing order as well as depth.
+        layer.addSublayer(preview)
+        layer.addSublayer(selectionFrame)
+        if let textInput { bringSubviewToFront(textInput) }
     }
 
     private func findScroll(in view: UIView) -> UIScrollView? {
