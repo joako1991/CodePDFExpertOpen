@@ -192,9 +192,9 @@
 "Supprimer l’annotation" = "Supprimer l’annotation";
 "Sur cet iPad" = "Sur cet iPad";
 "Surligner" = "Surligner";
-"Sélectionnez du texte pour le barrer." = "Sélectionnez du texte pour le barrer.";
-"Sélectionnez du texte pour le souligner." = "Sélectionnez du texte pour le souligner.";
-"Sélectionnez du texte pour le surligner." = "Sélectionnez du texte pour le surligner.";
+"Glissez sur le texte pour le barrer." = "Glissez sur le texte pour le barrer.";
+"Glissez sur le texte pour le souligner." = "Glissez sur le texte pour le souligner.";
+"Glissez sur le texte pour le surligner." = "Glissez sur le texte pour le surligner.";
 "Sélectionnez d’abord du texte dans le document." = "Sélectionnez d’abord du texte dans le document.";
 "Sélectionnez une ligne pour remplacer son contenu PDF." = "Sélectionnez une ligne pour remplacer son contenu PDF.";
 "Sélectionnez une seule ligne de texte sur une page, puis choisissez Remplacer le texte." = "Sélectionnez une seule ligne de texte sur une page, puis choisissez Remplacer le texte.";
@@ -209,9 +209,9 @@
 "Texte reconnu — prêt à copier" = "Texte reconnu — prêt à copier";
 "Texte trop long : réduisez la taille ou raccourcissez la ligne." = "Texte trop long : réduisez la taille ou raccourcissez la ligne.";
 "Texte, mot de passe ou page invalide." = "Texte, mot de passe ou page invalide.";
-"Touchez la page pour placer une note." = "Touchez la page pour placer une note.";
+"Touchez la page et écrivez votre note." = "Touchez la page et écrivez votre note.";
 "Touchez la page pour placer votre signature." = "Touchez la page pour placer votre signature.";
-"Touchez la page pour écrire ou tracez la taille de la zone de texte." = "Touchez la page pour écrire ou tracez la taille de la zone de texte.";
+"Touchez ou tracez un cadre, puis écrivez directement sur la page." = "Touchez ou tracez un cadre, puis écrivez directement sur la page.";
 "Touchez l’image PDF à remplacer." = "Touchez l’image PDF à remplacer.";
 "Touchez une annotation pour la supprimer." = "Touchez une annotation pour la supprimer.";
 "Tourner de 90°" = "Tourner de 90°";

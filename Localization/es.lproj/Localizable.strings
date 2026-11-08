@@ -192,9 +192,9 @@
 "Supprimer l’annotation" = "Eliminar anotación";
 "Sur cet iPad" = "En este iPad";
 "Surligner" = "Resaltar";
-"Sélectionnez du texte pour le barrer." = "Selecciona texto para tacharlo.";
-"Sélectionnez du texte pour le souligner." = "Selecciona texto para subrayarlo.";
-"Sélectionnez du texte pour le surligner." = "Selecciona texto para resaltarlo.";
+"Glissez sur le texte pour le barrer." = "Arrastra sobre el texto para tacharlo.";
+"Glissez sur le texte pour le souligner." = "Arrastra sobre el texto para subrayarlo.";
+"Glissez sur le texte pour le surligner." = "Arrastra sobre el texto para resaltarlo.";
 "Sélectionnez d’abord du texte dans le document." = "Selecciona primero texto en el documento.";
 "Sélectionnez une ligne pour remplacer son contenu PDF." = "Selecciona una línea para sustituir su contenido PDF.";
 "Sélectionnez une seule ligne de texte sur une page, puis choisissez Remplacer le texte." = "Selecciona una sola línea de texto de una página para sustituirla.";
@@ -209,9 +209,9 @@
 "Texte reconnu — prêt à copier" = "Texto reconocido: listo para copiar";
 "Texte trop long : réduisez la taille ou raccourcissez la ligne." = "Texto demasiado largo: reduce el tamaño de letra o acorta la línea.";
 "Texte, mot de passe ou page invalide." = "Texto, contraseña o página no válidos.";
-"Touchez la page pour placer une note." = "Toca la página para colocar una nota.";
+"Touchez la page et écrivez votre note." = "Toca la página y escribe tu nota.";
 "Touchez la page pour placer votre signature." = "Toca la página para colocar tu firma.";
-"Touchez la page pour écrire ou tracez la taille de la zone de texte." = "Toca la página para escribir o arrastra para definir el tamaño del cuadro de texto.";
+"Touchez ou tracez un cadre, puis écrivez directement sur la page." = "Toca o dibuja un cuadro y escribe directamente en la página.";
 "Touchez l’image PDF à remplacer." = "Toca la imagen PDF que quieras sustituir.";
 "Touchez une annotation pour la supprimer." = "Toca una anotación para eliminarla.";
 "Tourner de 90°" = "Girar 90°";

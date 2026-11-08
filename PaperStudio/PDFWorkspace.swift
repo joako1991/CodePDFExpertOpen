@@ -160,6 +160,8 @@ final class PDFWorkspace: ObservableObject {
     }
 
     private func changed(_ pages: [PDFPage], layout: Bool) {
+        var seen: Set<ObjectIdentifier> = []
+        let pages = pages.filter { seen.insert(ObjectIdentifier($0)).inserted }
         var versions = pageVersions
         for page in pages { versions[ObjectIdentifier(page), default: 0] += 1 }
         pageVersions = versions
@@ -173,6 +175,7 @@ final class PDFWorkspace: ObservableObject {
                 if let page { view.go(to: page) }
             }
             for page in pages where page.document === view.document {
+                view.annotationsChanged(on: page)
                 view.setNeedsDisplay(view.convert(page.bounds(for: .cropBox), from: page))
             }
         }
@@ -213,7 +216,7 @@ final class PDFWorkspace: ObservableObject {
 
     private func addAnnotations(_ additions: [(PDFPage, PDFAnnotation)], cost: Int = 1024) {
         guard !additions.isEmpty else { return }
-        commit(pages: additions.map { $0.0 }, cost: cost, undo: {
+        commit(pages: additions.map { $0.0 }, cost: max(cost, additions.count * 1024), undo: {
             for (page, annotation) in additions { page.removeAnnotation(annotation) }
         }, redo: {
             for (page, annotation) in additions { page.addAnnotation(annotation) }

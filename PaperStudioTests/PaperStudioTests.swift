@@ -683,29 +683,38 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertTrue(page.annotations.isEmpty)
     }
 
-    func testUnderlineIsDrawnDuringDragWithoutAnIntermediateBlueSelection() throws {
+    func testMarkupIsDrawnDuringDragWithoutAnIntermediateBlueSelection() throws {
         let workspace = PDFWorkspace(url: try library.createWelcome())
         let view = canvas(workspace)
         let page = try XCTUnwrap(workspace.page)
         let match = try XCTUnwrap(workspace.document?.findString("Paper Studio", withOptions: []).first)
         let bounds = match.bounds(for: page)
-        workspace.toggleTool(.underline)
-        view.beginToolGesture(at: view.convert(CGPoint(x: bounds.minX + 1, y: bounds.midY), from: page))
-        view.updateToolGesture(at: view.convert(CGPoint(x: bounds.midX, y: bounds.midY), from: page))
-        view.renderInteractionFrame()
-        let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "tool-preview" } as? CAShapeLayer)
-        let firstWidth = try XCTUnwrap(preview.path).boundingBoxOfPath.width
-        XCTAssertGreaterThan(firstWidth, 0)
-        XCTAssertNil(view.currentSelection)
-        XCTAssertTrue(page.annotations.isEmpty)
-        let final = view.convert(CGPoint(x: bounds.maxX - 1, y: bounds.midY), from: page)
-        view.updateToolGesture(at: final)
-        view.renderInteractionFrame()
-        XCTAssertGreaterThan(try XCTUnwrap(preview.path).boundingBoxOfPath.width, firstWidth)
-        view.endToolGesture(at: final)
-        XCTAssertTrue(page.annotations.contains { $0.type == "Underline" })
-        workspace.undo()
-        XCTAssertTrue(page.annotations.isEmpty)
+        for rotation in [0, 90] {
+            page.rotation = rotation
+            view.layoutDocumentView()
+            for tool in [CanvasTool.underline, .highlight, .strikeOut] {
+                workspace.toggleTool(tool)
+                view.beginToolGesture(at: view.convert(CGPoint(x: bounds.minX + 1, y: bounds.midY), from: page))
+                view.updateToolGesture(at: view.convert(CGPoint(x: bounds.midX, y: bounds.midY), from: page))
+                view.renderInteractionFrame()
+                let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "tool-preview" } as? CAShapeLayer)
+                let first = try XCTUnwrap(preview.path).boundingBoxOfPath
+                let firstLength = max(first.width, first.height)
+                XCTAssertGreaterThan(firstLength, 0, "\(tool), rotation \(rotation)")
+                XCTAssertNil(view.currentSelection)
+                XCTAssertTrue(page.annotations.isEmpty)
+                let final = view.convert(CGPoint(x: bounds.maxX - 1, y: bounds.midY), from: page)
+                view.updateToolGesture(at: final)
+                view.renderInteractionFrame()
+                let last = try XCTUnwrap(preview.path).boundingBoxOfPath
+                XCTAssertGreaterThan(max(last.width, last.height), firstLength)
+                view.endToolGesture(at: final)
+                let type = try XCTUnwrap(tool.markup).rawValue.replacingOccurrences(of: "/", with: "")
+                XCTAssertTrue(page.annotations.contains { $0.type == type })
+                workspace.undo()
+                XCTAssertTrue(page.annotations.isEmpty)
+            }
+        }
     }
 
     func testExistingTextCanBeEditedInlineAndUndone() throws {

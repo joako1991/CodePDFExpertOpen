@@ -192,9 +192,9 @@
 "Supprimer l’annotation" = "Delete annotation";
 "Sur cet iPad" = "On this iPad";
 "Surligner" = "Highlight";
-"Sélectionnez du texte pour le barrer." = "Select text to strike it through.";
-"Sélectionnez du texte pour le souligner." = "Select text to underline it.";
-"Sélectionnez du texte pour le surligner." = "Select text to highlight it.";
+"Glissez sur le texte pour le barrer." = "Drag across text to strike it through.";
+"Glissez sur le texte pour le souligner." = "Drag across text to underline it.";
+"Glissez sur le texte pour le surligner." = "Drag across text to highlight it.";
 "Sélectionnez d’abord du texte dans le document." = "Select text in the document first.";
 "Sélectionnez une ligne pour remplacer son contenu PDF." = "Select a line to replace its PDF content.";
 "Sélectionnez une seule ligne de texte sur une page, puis choisissez Remplacer le texte." = "Select one line of text on a page to replace it.";
@@ -209,9 +209,9 @@
 "Texte reconnu — prêt à copier" = "Text recognized — ready to copy";
 "Texte trop long : réduisez la taille ou raccourcissez la ligne." = "Text is too long: reduce the font size or shorten the line.";
 "Texte, mot de passe ou page invalide." = "Invalid text, password or page.";
-"Touchez la page pour placer une note." = "Tap the page to place a note.";
+"Touchez la page et écrivez votre note." = "Tap the page and type your note.";
 "Touchez la page pour placer votre signature." = "Tap the page to place your signature.";
-"Touchez la page pour écrire ou tracez la taille de la zone de texte." = "Tap the page to type, or drag to size a text box.";
+"Touchez ou tracez un cadre, puis écrivez directement sur la page." = "Tap or drag a box, then type directly on the page.";
 "Touchez l’image PDF à remplacer." = "Tap the PDF image to replace.";
 "Touchez une annotation pour la supprimer." = "Tap an annotation to delete it.";
 "Tourner de 90°" = "Rotate 90°";

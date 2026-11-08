@@ -69,7 +69,7 @@ private final class CanvasGestureDelegate: NSObject, UIGestureRecognizerDelegate
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         var view = touch.view
         while let current = view {
-            if current is UITextView || current is UIControl { return false }
+            if current.accessibilityIdentifier == "inline-annotation-text" || current is UIControl { return false }
             view = current.superview
         }
         return true
@@ -351,12 +351,12 @@ final class DrawingPDFView: PDFView {
         let path = UIBezierPath()
         for line in selection.selectionsByLine() {
             for page in line.pages {
-                let bounds = convert(line.bounds(for: page), from: page)
-                if markup == .highlight { path.append(UIBezierPath(rect: bounds)) }
+                let bounds = line.bounds(for: page)
+                if markup == .highlight { path.append(UIBezierPath(rect: convert(bounds, from: page))) }
                 else {
-                    let y = markup == .underline ? bounds.maxY : bounds.midY
-                    path.move(to: CGPoint(x: bounds.minX, y: y))
-                    path.addLine(to: CGPoint(x: bounds.maxX, y: y))
+                    let y = markup == .underline ? bounds.minY : bounds.midY
+                    path.move(to: convert(CGPoint(x: bounds.minX, y: y), from: page))
+                    path.addLine(to: convert(CGPoint(x: bounds.maxX, y: y), from: page))
                 }
             }
         }
@@ -389,6 +389,7 @@ final class DrawingPDFView: PDFView {
             guard let annotation = movingAnnotation else { return }
             let before = convert(annotation.bounds, from: page)
             annotation.bounds = movedBounds(on: page)
+            annotationsChanged(on: page)
             let after = convert(annotation.bounds, from: page)
             setNeedsDisplay(before.union(after).insetBy(dx: -4, dy: -4))
             path.append(UIBezierPath(rect: after))
@@ -422,6 +423,7 @@ final class DrawingPDFView: PDFView {
         if let annotation = movingAnnotation, let page = annotation.page {
             let before = convert(annotation.bounds, from: page)
             annotation.bounds = initialBounds
+            annotationsChanged(on: page)
             setNeedsDisplay(before.union(convert(initialBounds, from: page)).insetBy(dx: -4, dy: -4))
         }
         if workspace?.activeTool.selectsText == true { clearSelection() }
@@ -439,7 +441,7 @@ final class DrawingPDFView: PDFView {
 
     func beginTextEntry(on page: PDFPage, bounds: CGRect, note: Bool = false, annotation: PDFAnnotation? = nil) {
         finishTextEntry()
-        guard let workspace, page.document === document else { return }
+        guard let workspace, page.document === document, document?.allowsDocumentChanges == true else { return }
         let clipped = bounds.standardized.intersection(page.bounds(for: .cropBox))
         guard !clipped.isNull, clipped.width >= 12, clipped.height >= 12 else { return }
         textPlacement = AnnotationPlacement(page: page, bounds: clipped, note: note)

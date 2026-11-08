@@ -88,7 +88,10 @@ struct EditorView: View {
             Button("Annuler", role: .cancel) {}
         }
         .onChange(of: scenePhase) { phase in
-            if phase == .background, workspace.dirty || workspace.hasFormFields { workspace.save() }
+            if phase == .background {
+                workspace.finishInteraction()
+                if workspace.dirty || workspace.hasFormFields { workspace.save() }
+            }
         }
         .onDisappear { exportTask?.cancel() }
         .onChange(of: workspace.textTarget?.id) { id in if id != nil { sheet = .contentText } }

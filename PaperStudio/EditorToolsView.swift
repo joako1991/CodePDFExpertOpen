@@ -84,11 +84,11 @@ extension CanvasTool {
     var instruction: String {
         switch self {
         case .read: return "Faites défiler, zoomez ou sélectionnez du texte."
-        case .highlight: return "Sélectionnez du texte pour le surligner."
-        case .underline: return "Sélectionnez du texte pour le souligner."
-        case .strikeOut: return "Sélectionnez du texte pour le barrer."
-        case .text: return "Touchez la page pour écrire ou tracez la taille de la zone de texte."
-        case .note: return "Touchez la page pour placer une note."
+        case .highlight: return "Glissez sur le texte pour le surligner."
+        case .underline: return "Glissez sur le texte pour le souligner."
+        case .strikeOut: return "Glissez sur le texte pour le barrer."
+        case .text: return "Touchez ou tracez un cadre, puis écrivez directement sur la page."
+        case .note: return "Touchez la page et écrivez votre note."
         case .signature: return "Touchez la page pour placer votre signature."
         case .pen: return "Dessinez sur la page avec le doigt ou le Pencil."
         case .rectangle, .oval: return "Tracez la forme directement sur la page."
