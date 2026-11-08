@@ -78,6 +78,7 @@ final class PDFWorkspace: ObservableObject {
     @Published var activeTool: CanvasTool = .read {
         didSet {
             guard oldValue != activeTool else { return }
+            (pdfView as? DrawingPDFView)?.finishTextEntry()
             switchingTool = true
             inkColor = toolColors[activeTool] ?? activeTool.defaultColor
             switchingTool = false
@@ -91,7 +92,9 @@ final class PDFWorkspace: ObservableObject {
     }
     private var switchingTool = false
     private var toolColors: [CanvasTool: Color] = [:]
-    @Published var textStyle = TextStyle()
+    @Published var textStyle = TextStyle() {
+        didSet { (pdfView as? DrawingPDFView)?.updateTextEntryStyle() }
+    }
     @Published var placement: AnnotationPlacement?
     @Published var textTarget: ContentTextTarget?
     var signatureStrokes: [[CGPoint]] = []
@@ -186,6 +189,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func undo() {
+        (pdfView as? DrawingPDFView)?.finishTextEntry()
         guard canEdit, let edit = history.popLast() else { return }
         (pdfView as? DrawingPDFView)?.cancelToolGesture()
         pdfView?.clearSelection()
@@ -197,6 +201,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func redo() {
+        (pdfView as? DrawingPDFView)?.finishTextEntry()
         guard canEdit, let edit = future.popLast() else { return }
         (pdfView as? DrawingPDFView)?.cancelToolGesture()
         pdfView?.clearSelection()
@@ -245,6 +250,7 @@ final class PDFWorkspace: ObservableObject {
 
     func replaceContent(operation: MuPDFEngine.Operation, page: Int, region: CGRect,
                         text: String = "", fontSize: Float = 12, image: Data = Data()) async throws {
+        finishInteraction()
         guard let before = document, canEdit, let data = before.dataRepresentation() else { throw StudioError.writeFailed }
         let oldIndex = pageIndex
         let previousRevision = revision
@@ -278,6 +284,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func exportWord() async throws -> URL {
+        finishInteraction()
         guard let document, !document.isLocked, let data = document.dataRepresentation() else { throw StudioError.invalidPDF }
         let output = try await MuPDFEngine.processAsync(data: data, password: openedPassword ?? "", operation: .docx)
         try Task.checkCancellation()
@@ -292,7 +299,7 @@ final class PDFWorkspace: ObservableObject {
 
     @discardableResult
     func save() -> Bool {
-        (pdfView as? DrawingPDFView)?.cancelToolGesture()
+        finishInteraction()
         do {
             guard let document, !document.isLocked else { throw StudioError.writeFailed }
             var options: [PDFDocumentWriteOption: Any] = [:]
@@ -312,9 +319,15 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func go(to index: Int) {
+        finishInteraction()
         guard let target = document?.page(at: index) else { return }
         pageIndex = index
         pdfView?.go(to: target)
+    }
+
+    func finishInteraction() {
+        (pdfView as? DrawingPDFView)?.finishTextEntry()
+        (pdfView as? DrawingPDFView)?.cancelToolGesture()
     }
 
     func search(_ text: String) {
@@ -523,12 +536,14 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func rotate() {
+        finishInteraction()
         guard let page else { return }
         let before = page.rotation
         commit(pages: [page], layout: true, undo: { page.rotation = before }, redo: { page.rotation = (before + 90) % 360 })
     }
 
     func deletePage() {
+        finishInteraction()
         guard let document, let removed = page else { return }
         guard document.pageCount > 1 else { error = StudioError.lastPage.localizedDescription; return }
         let index = pageIndex, beforeBookmarks = bookmarks
@@ -546,6 +561,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func movePage(by offset: Int) {
+        finishInteraction()
         guard let document, let page else { return }
         let target = pageIndex + offset
         guard (0..<document.pageCount).contains(target) else { return }
@@ -570,6 +586,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func merge(_ urls: [URL]) {
+        finishInteraction()
         do {
             guard let document, canEdit else { throw StudioError.invalidPDF }
             var additions: [PDFPage] = []
@@ -593,6 +610,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func export(password: String? = nil, currentPageOnly: Bool = false) -> URL? {
+        finishInteraction()
         do {
             guard let document, !document.isLocked else { throw StudioError.invalidPDF }
             let output: PDFDocument
@@ -634,6 +652,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func exportText() -> URL? {
+        finishInteraction()
         do {
             guard let document, !document.isLocked, document.allowsCopying else { throw StudioError.invalidPDF }
             return try PDFConversions.temporaryFile(data: Data((document.string ?? "").utf8), name: "\(url.deletingPathExtension().lastPathComponent).txt")
@@ -641,6 +660,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func exportImage() -> URL? {
+        finishInteraction()
         do {
             guard let document, document.allowsCopying, let page,
                   let data = PDFConversions.image(of: page, quality: .detailed).pngData() else { throw StudioError.invalidPDF }

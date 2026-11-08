@@ -7,14 +7,14 @@ Application native en anglais, espagnol et français pour **iPadOS 17+**, sous *
 - Choix de langue English / Español / Français dans la barre latérale, conservé au redémarrage. Le changement de l’interface ne ferme pas le document et ne traduit pas les PDF de l’utilisateur. Les sélecteurs système iOS peuvent suivre la langue de l’appareil.
 - Outils persistants : activer, configurer, puis utiliser sur la page. Toucher à nouveau le bouton ou choisir Terminer pour désactiver l’outil. Les commandes de document (export, rotation, etc.) restent des actions directes.
 - Soulignement bleu par défaut, surlignage jaune et barré rouge : activer d’abord, puis sélectionner/glisser sur le texte pour appliquer automatiquement. Chaque outil conserve sa couleur configurée durant la session.
-- Texte : activer, toucher le point de départ ou tracer le cadre, puis saisir le contenu. Choisir famille (sans empattement, avec empattement, monospace), taille, graisse et couleur. Pour modifier un texte existant, sélectionner son annotation puis Modifier le texte. Pour redimensionner, activer Déplacer, sélectionner la zone et tirer sa poignée inférieure droite.
+- Texte : activer, toucher le point de départ ou tracer le cadre, puis écrire directement sur la page sans fenêtre de saisie séparée. Terminer valide le texte ; Annuler ferme la saisie sans ajouter d’annotation. Choisir famille (sans empattement, avec empattement, monospace), taille, graisse et couleur. Pour modifier un texte existant, sélectionner son annotation puis Modifier le texte. Pour redimensionner, activer Déplacer, sélectionner la zone et tirer sa poignée inférieure droite.
 - Notes et signatures placées à l’endroit touché. Le remplacement de contenu MuPDF s’active également avant de sélectionner la ligne ou l’image.
 
 Ces changements sont sur `main` ; le tag `v0.1` conserve la version publiée. Sur un Mac ayant cloné ce tag, conserver vos modifications locales puis utiliser `git fetch origin`, `git switch main` et `git pull --ff-only origin main` pour récupérer le développement courant.
 
 ### Réactivité de l’éditeur
 
-- Le trait, le marquage et les cadres suivent le geste à chaque rafraîchissement de l’écran. Le déplacement et le redimensionnement des annotations s’affichent pendant le glissement ; une seule étape d’annulation est enregistrée au relâchement.
+- Le soulignement, le surlignage et le barré apparaissent pendant le glissement, sans étape de sélection bleue préalable. Le trait, le marquage et les cadres suivent le geste à chaque rafraîchissement de l’écran. Le déplacement et le redimensionnement des annotations s’affichent pendant le glissement ; une seule étape d’annulation est enregistrée au relâchement.
 - L’annulation des annotations, formulaires, rotations et changements de pages conserve les objets modifiés au lieu de sérialiser le PDF entier à chaque action.
 - Les miniatures sont mises en cache et rendues en arrière-plan. Seule la miniature d’une page modifiée est invalidée ; changer d’outil ne relance pas leur rendu.
 - Un doigt utilise l’outil actif ; deux doigts font défiler la page. Le pincement conserve le zoom. Les exports et le traitement MuPDF restent des opérations de document distinctes.

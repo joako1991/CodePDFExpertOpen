@@ -2,6 +2,7 @@
 
 ## En développement — main
 
+- Saisie et modification de texte/notes directement sur la page ; mise en forme visible pendant la saisie, sans fenêtre de confirmation séparée.
 - Réactivité : prévisualisation par rafraîchissement, fin du délai fixe de sélection et des animations implicites de tracé, déplacement/redimensionnement visibles pendant le geste.
 - Historique d’annulation par opérations ; les annotations et gestes ne copient plus le PDF entier. Historique compatible avec les remplacements de document MuPDF.
 - Miniatures en arrière-plan, cache limité en mémoire et invalidation de la seule page modifiée ; défilement à deux doigts pendant l’édition.

@@ -21,7 +21,7 @@ enum TextWeight: String, CaseIterable, Identifiable {
     }
 }
 
-struct TextStyle {
+struct TextStyle: Equatable {
     var family: TextFamily = .system
     var size: Double = 16
     var weight: TextWeight = .regular
@@ -67,34 +67,5 @@ struct TextStyleControls: View {
             ForEach(style.availableWeights) { Text(LocalizedStringKey($0.title)).tag($0) }
         }
         ColorPicker("Couleur du texte", selection: $style.color, supportsOpacity: false)
-    }
-}
-
-struct TextAnnotationEditor: View {
-    @ObservedObject var workspace: PDFWorkspace
-    let placement: AnnotationPlacement?
-    let annotation: PDFAnnotation?
-    let done: () -> Void
-    @State private var text = ""
-    private var isNote: Bool { placement?.note == true || annotation?.type == "Text" }
-    var body: some View {
-        Form {
-            Section("Contenu") {
-                TextEditor(text: $text).frame(minHeight: 140)
-                    .font(Font(workspace.textStyle.font)).foregroundStyle(workspace.textStyle.color)
-            }
-            if !isNote {
-                Section("Mise en forme") { TextStyleControls(style: $workspace.textStyle) }
-            }
-            Section {
-                Button("Appliquer") {
-                    if let annotation { workspace.updateTextAnnotation(annotation, text: text) }
-                    else if let placement { workspace.placeText(text, at: placement) }
-                    done()
-                }.disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .navigationTitle(LocalizedStringKey(isNote ? "Ajouter une note" : "Zone de texte"))
-        .onAppear { text = annotation?.contents ?? ""; if let annotation { workspace.readTextStyle(from: annotation) } }
     }
 }

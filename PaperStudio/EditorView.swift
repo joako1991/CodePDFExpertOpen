@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 private struct SharedFile: Identifiable { let id = UUID(); let url: URL }
 private enum EditorSheet: String, Identifiable {
-    case placement, signature, password, ocr, editAnnotation, masked, optimize, forms, contentText, contentImage
+    case signature, password, ocr, masked, optimize, forms, contentText, contentImage
     var id: String { rawValue }
 }
 
@@ -91,7 +91,6 @@ struct EditorView: View {
             if phase == .background, workspace.dirty || workspace.hasFormFields { workspace.save() }
         }
         .onDisappear { exportTask?.cancel() }
-        .onChange(of: workspace.placement?.id) { id in if id != nil { sheet = .placement } }
         .onChange(of: workspace.textTarget?.id) { id in if id != nil { sheet = .contentText } }
         .onChange(of: workspace.imageTarget?.id) { id in
             if id != nil { sheet = .contentImage }
@@ -101,6 +100,7 @@ struct EditorView: View {
     private var header: some View {
         HStack(spacing: 16) {
             Button {
+                workspace.finishInteraction()
                 // Native checkbox/radio controls need not emit a text-change notification.
                 if workspace.dirty || workspace.hasFormFields { confirmClose = true } else { onClose() }
             } label: { Label("Bibliothèque", systemImage: "chevron.left") }
@@ -127,6 +127,7 @@ struct EditorView: View {
                 Button("Aplatir et réduire", systemImage: "arrow.down.right.and.arrow.up.left") { sheet = .optimize }
                 Button("Masquer des informations", systemImage: "rectangle.fill") { sheet = .masked }
                 Button("Imprimer", systemImage: "printer") {
+                    workspace.finishInteraction()
                     guard let data = workspace.document?.dataRepresentation() else { return }
                     let controller = UIPrintInteractionController.shared
                     controller.printingItem = data
@@ -142,7 +143,11 @@ struct EditorView: View {
             signature: { sheet = .signature },
             ocr: { sheet = .ocr; workspace.recognizeCurrentPage() },
             forms: { sheet = .forms }, merge: { merging = true },
-            deletePage: { confirmDelete = true }, editAnnotation: { sheet = .editAnnotation })
+            deletePage: { confirmDelete = true }, editAnnotation: {
+                if let annotation = workspace.selectedAnnotation, let view = workspace.pdfView as? DrawingPDFView {
+                    view.beginTextEntry(annotation: annotation)
+                }
+            })
     }
 
     private var pages: some View {
@@ -207,12 +212,6 @@ struct EditorView: View {
         NavigationStack {
             Group {
                 switch kind {
-                case .placement:
-                    if let placement = workspace.placement {
-                        TextAnnotationEditor(workspace: workspace, placement: placement, annotation: nil, done: { sheet = nil })
-                    }
-                case .editAnnotation:
-                    TextAnnotationEditor(workspace: workspace, placement: nil, annotation: workspace.selectedAnnotation, done: { sheet = nil })
                 case .signature:
                     SignatureView { strokes, size in
                         workspace.signatureStrokes = strokes

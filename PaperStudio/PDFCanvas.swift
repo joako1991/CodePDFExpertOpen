@@ -24,6 +24,7 @@ struct PDFCanvas: UIViewRepresentable {
         for name in [UITextField.textDidChangeNotification, UITextView.textDidChangeNotification] {
             let observer = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak view, weak workspace] notification in
                 guard let input = notification.object as? UIView, let view, input.isDescendant(of: view) else { return }
+                if (view as? DrawingPDFView)?.isInlineTextInput(input) == true { return }
                 Task { @MainActor in workspace?.markExternalChange() }
             }
             context.coordinator.formObservers.append(observer)
@@ -42,6 +43,7 @@ struct PDFCanvas: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: PDFView, coordinator: Coordinator) {
+        (view as? DrawingPDFView)?.finishTextEntry()
         (view as? DrawingPDFView)?.cancelToolGesture()
     }
 
@@ -64,10 +66,24 @@ private final class CanvasFrameTarget: NSObject {
 
 /// Keep canvas touches independent of PDFKit's delayed text/double-tap recognizers.
 private final class CanvasGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var view = touch.view
+        while let current = view {
+            if current is UITextView || current is UIControl { return false }
+            view = current.superview
+        }
+        return true
+    }
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         other is UIPinchGestureRecognizer || ((other as? UIPanGestureRecognizer)?.minimumNumberOfTouches ?? 1) > 1
     }
+}
+
+@MainActor
+private final class CanvasTextDelegate: NSObject, UITextViewDelegate {
+    weak var view: DrawingPDFView?
+    func textViewDidEndEditing(_ textView: UITextView) { view?.finishTextEntry() }
 }
 
 /// Gestures convert view coordinates to PDF page coordinates, including zoom and rotation.
@@ -76,6 +92,7 @@ final class DrawingPDFView: PDFView {
     weak var workspace: PDFWorkspace?
     private var stroke: [CGPoint] = []
     private var strokePage: PDFPage?
+    private var gestureSelection: PDFSelection?
     private var movingAnnotation: PDFAnnotation?
     private var initialBounds: CGRect = .zero
     private let preview = CAShapeLayer()
@@ -84,6 +101,11 @@ final class DrawingPDFView: PDFView {
     private var displayLink: CADisplayLink?
     private let frameTarget = CanvasFrameTarget()
     private let canvasGestures = CanvasGestureDelegate()
+    private let textDelegate = CanvasTextDelegate()
+    private var textInput: UITextView?
+    private var textPlacement: AnnotationPlacement?
+    private var editedTextAnnotation: PDFAnnotation?
+    private var initialTextStyle: TextStyle?
     private var pendingSelection = false
     private var previewDirty = false
     private var penPath = UIBezierPath()
@@ -102,6 +124,7 @@ final class DrawingPDFView: PDFView {
         annotationTap.delaysTouchesBegan = false
         annotationTap.delaysTouchesEnded = false
         frameTarget.view = self
+        textDelegate.view = self
         addGestureRecognizer(drawingPan)
         addGestureRecognizer(annotationTap)
         preview.fillColor = UIColor.clear.cgColor
@@ -116,6 +139,7 @@ final class DrawingPDFView: PDFView {
         selectionFrame.actions = ["path": NSNull()]
         layer.addSublayer(selectionFrame)
         NotificationCenter.default.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: self)
+        NotificationCenter.default.addObserver(self, selector: #selector(layoutTextEntry), name: .PDFViewScaleChanged, object: self)
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
@@ -188,7 +212,11 @@ final class DrawingPDFView: PDFView {
         stopFrames()
     }
 
-    override func layoutSubviews() { super.layoutSubviews(); configureTool() }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        configureTool()
+        layoutTextEntry()
+    }
 
     private func findScroll(in view: UIView) -> UIScrollView? {
         for child in view.subviews {
@@ -204,6 +232,7 @@ final class DrawingPDFView: PDFView {
         if pageScroll?.panGestureRecognizer.minimumNumberOfTouches != touches {
             pageScroll?.panGestureRecognizer.minimumNumberOfTouches = touches
         }
+        pageScroll?.panGestureRecognizer.isEnabled = textInput == nil
     }
 
     @objc private func tap(_ gesture: UITapGestureRecognizer) {
@@ -216,9 +245,15 @@ final class DrawingPDFView: PDFView {
             return
         }
         if workspace.activeTool == .text || workspace.activeTool == .note {
+            if let annotation = page.annotations.reversed().first(where: {
+                ($0.type == "FreeText" || $0.type == "Text") && $0.bounds.contains(point)
+            }) {
+                beginTextEntry(annotation: annotation)
+                return
+            }
             let rect = CGRect(x: location.x, y: location.y, width: (workspace.activeTool == .note ? 30 : 220) * scaleFactor,
                               height: (workspace.activeTool == .note ? 30 : 80) * scaleFactor)
-            workspace.requestPlacement(on: page, bounds: convert(rect, to: page), note: workspace.activeTool == .note)
+            beginTextEntry(on: page, bounds: convert(rect, to: page), note: workspace.activeTool == .note)
             return
         }
         if workspace.activeTool == .signature {
@@ -247,6 +282,7 @@ final class DrawingPDFView: PDFView {
     }
 
     func beginToolGesture(at origin: CGPoint) {
+        finishTextEntry()
         cancelToolGesture()
         guard let workspace, let page = page(for: origin, nearest: false) else { return }
         strokePage = page
@@ -284,11 +320,11 @@ final class DrawingPDFView: PDFView {
         guard let workspace, let page = strokePage, stroke.count > 1 else { return }
         if workspace.activeTool.selectsText {
             pendingSelection = false
-            if let selection = currentSelection { workspace.commitToolSelection(selection) }
+            if let selection = gestureSelection ?? currentSelection { workspace.commitToolSelection(selection) }
             clearSelection()
         } else if workspace.activeTool == .text {
             let first = stroke[0], last = stroke[stroke.count - 1]
-            workspace.requestPlacement(on: page, bounds: CGRect(x: min(first.x, last.x), y: min(first.y, last.y),
+            beginTextEntry(on: page, bounds: CGRect(x: min(first.x, last.x), y: min(first.y, last.y),
                 width: abs(last.x - first.x), height: abs(last.y - first.y)))
         } else if workspace.activeTool == .move, let annotation = movingAnnotation {
             let bounds = movedBounds(on: page)
@@ -303,7 +339,9 @@ final class DrawingPDFView: PDFView {
     private func updateTextSelection() {
         guard let page = strokePage, let first = stroke.first, let last = stroke.last else { return }
         let selection = page.selection(from: first, to: last)
-        setCurrentSelection(selection, animate: false)
+        gestureSelection = selection
+        // Markup draws directly under the finger instead of showing a blue selection first.
+        if workspace?.activeTool.markup == nil { setCurrentSelection(selection, animate: false) }
         if let selection { drawMarkupPreview(selection) }
         else { preview.path = nil }
     }
@@ -374,7 +412,7 @@ final class DrawingPDFView: PDFView {
     }
 
     private func clearGesture() {
-        stroke = []; strokePage = nil; movingAnnotation = nil; resizing = false; preview.path = nil
+        stroke = []; strokePage = nil; gestureSelection = nil; movingAnnotation = nil; resizing = false; preview.path = nil
         penPath = UIBezierPath(); renderedPointCount = 0; previewDirty = false
     }
 
@@ -388,6 +426,90 @@ final class DrawingPDFView: PDFView {
         }
         if workspace?.activeTool.selectsText == true { clearSelection() }
         clearGesture()
+    }
+
+    func isInlineTextInput(_ view: UIView) -> Bool { view === textInput }
+
+    func beginTextEntry(annotation: PDFAnnotation) {
+        guard let workspace, let page = annotation.page, page.document === document else { return }
+        finishTextEntry()
+        workspace.readTextStyle(from: annotation)
+        beginTextEntry(on: page, bounds: annotation.bounds, note: annotation.type == "Text", annotation: annotation)
+    }
+
+    func beginTextEntry(on page: PDFPage, bounds: CGRect, note: Bool = false, annotation: PDFAnnotation? = nil) {
+        finishTextEntry()
+        guard let workspace, page.document === document else { return }
+        let clipped = bounds.standardized.intersection(page.bounds(for: .cropBox))
+        guard !clipped.isNull, clipped.width >= 12, clipped.height >= 12 else { return }
+        textPlacement = AnnotationPlacement(page: page, bounds: clipped, note: note)
+        editedTextAnnotation = annotation
+        initialTextStyle = workspace.textStyle
+        let input = UITextView()
+        textInput = input
+        input.accessibilityIdentifier = "inline-annotation-text"
+        input.delegate = textDelegate
+        input.text = annotation?.contents ?? ""
+        input.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
+        input.layer.borderColor = UIColor.systemBlue.cgColor
+        input.layer.borderWidth = 1
+        input.textContainerInset = UIEdgeInsets(top: 2, left: 0, bottom: 0, right: 0)
+        input.textContainer.lineFragmentPadding = 0
+        input.isScrollEnabled = true
+        let bar = UIToolbar()
+        bar.items = [UIBarButtonItem(title: L10n.tr("Annuler"), style: .plain, target: self, action: #selector(cancelTextEntry)),
+                     UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+                     UIBarButtonItem(title: L10n.tr("Terminer"), style: .done, target: self, action: #selector(finishTextEntry))]
+        bar.sizeToFit()
+        input.inputAccessoryView = bar
+        addSubview(input)
+        updateTextEntryStyle()
+        layoutTextEntry()
+        configureScrolling(drawing: drawingPan.isEnabled)
+        input.becomeFirstResponder()
+        workspace.selectedAnnotation = annotation
+    }
+
+    func updateTextEntryStyle() {
+        guard let input = textInput, let workspace else { return }
+        let font = workspace.textStyle.font.withSize(workspace.textStyle.font.pointSize * scaleFactor)
+        let color = UIColor(workspace.textStyle.color)
+        if input.font != font { input.font = font }
+        if input.textColor != color { input.textColor = color }
+    }
+
+    @objc private func layoutTextEntry() {
+        guard let input = textInput, let placement = textPlacement else { return }
+        var frame = convert(placement.bounds, from: placement.page)
+        // Notes have a small PDF icon but a comfortable writing area while editing.
+        if placement.note { frame.size = CGSize(width: max(240, frame.width), height: max(100, frame.height)) }
+        if input.frame != frame { input.frame = frame }
+        updateTextEntryStyle()
+    }
+
+    @objc func finishTextEntry() {
+        guard let input = textInput, let placement = textPlacement else { return }
+        let annotation = editedTextAnnotation, text = input.text ?? "", styleBefore = initialTextStyle
+        textInput = nil; textPlacement = nil; editedTextAnnotation = nil; initialTextStyle = nil
+        input.resignFirstResponder()
+        input.removeFromSuperview()
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let annotation {
+                if annotation.contents != text || workspace?.textStyle != styleBefore {
+                    workspace?.updateTextAnnotation(annotation, text: text)
+                }
+            }
+            else { workspace?.placeText(text, at: placement) }
+        }
+        configureScrolling(drawing: drawingPan.isEnabled)
+    }
+
+    @objc func cancelTextEntry() {
+        guard let input = textInput else { return }
+        textInput = nil; textPlacement = nil; editedTextAnnotation = nil; initialTextStyle = nil
+        input.resignFirstResponder()
+        input.removeFromSuperview()
+        configureScrolling(drawing: drawingPan.isEnabled)
     }
 }
 

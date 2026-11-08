@@ -631,12 +631,24 @@ final class PaperStudioTests: XCTestCase {
         workspace.toggleTool(.text)
         view.beginToolGesture(at: view.convert(CGPoint(x: 50, y: 100), from: page))
         view.endToolGesture(at: view.convert(CGPoint(x: 250, y: 180), from: page))
-        let bounds = try XCTUnwrap(workspace.placement?.bounds)
+        let input = try XCTUnwrap(view.subviews.first { $0.accessibilityIdentifier == "inline-annotation-text" } as? UITextView)
+        let bounds = view.convert(input.frame, to: page)
         XCTAssertEqual(bounds.minX, 50, accuracy: 0.01)
         XCTAssertEqual(bounds.width, 200, accuracy: 0.01)
         XCTAssertEqual(bounds.height, 80, accuracy: 0.01)
         XCTAssertTrue(page.annotations.isEmpty)
         XCTAssertFalse(workspace.dirty)
+        XCTAssertNil(workspace.placement, "Text entry belongs on the page, without presenting a sheet")
+        input.text = "Type directly here"
+        workspace.textStyle.size = 24
+        workspace.textStyle.weight = .bold
+        XCTAssertEqual(try XCTUnwrap(input.font?.pointSize), 24 * view.scaleFactor, accuracy: 0.01)
+        XCTAssertTrue(input.font?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+        view.finishTextEntry()
+        XCTAssertEqual(page.annotations.first?.contents, "Type directly here")
+        XCTAssertEqual(page.annotations.first?.font?.pointSize, 24)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty)
     }
 
     func testNativeSelectionAppliesOnNextFrameWithoutDebounce() throws {
@@ -669,5 +681,66 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(annotation.bounds, original)
         workspace.undo()
         XCTAssertTrue(page.annotations.isEmpty)
+    }
+
+    func testUnderlineIsDrawnDuringDragWithoutAnIntermediateBlueSelection() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        let match = try XCTUnwrap(workspace.document?.findString("Paper Studio", withOptions: []).first)
+        let bounds = match.bounds(for: page)
+        workspace.toggleTool(.underline)
+        view.beginToolGesture(at: view.convert(CGPoint(x: bounds.minX + 1, y: bounds.midY), from: page))
+        view.updateToolGesture(at: view.convert(CGPoint(x: bounds.midX, y: bounds.midY), from: page))
+        view.renderInteractionFrame()
+        let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "tool-preview" } as? CAShapeLayer)
+        let firstWidth = try XCTUnwrap(preview.path).boundingBoxOfPath.width
+        XCTAssertGreaterThan(firstWidth, 0)
+        XCTAssertNil(view.currentSelection)
+        XCTAssertTrue(page.annotations.isEmpty)
+        let final = view.convert(CGPoint(x: bounds.maxX - 1, y: bounds.midY), from: page)
+        view.updateToolGesture(at: final)
+        view.renderInteractionFrame()
+        XCTAssertGreaterThan(try XCTUnwrap(preview.path).boundingBoxOfPath.width, firstWidth)
+        view.endToolGesture(at: final)
+        XCTAssertTrue(page.annotations.contains { $0.type == "Underline" })
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty)
+    }
+
+    func testExistingTextCanBeEditedInlineAndUndone() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        workspace.requestPlacement(on: try XCTUnwrap(workspace.page), bounds: CGRect(x: 50, y: 200, width: 250, height: 80))
+        workspace.placeText("Original", at: try XCTUnwrap(workspace.placement))
+        let annotation = try XCTUnwrap(workspace.selectedAnnotation)
+        view.beginTextEntry(annotation: annotation)
+        let input = try XCTUnwrap(view.subviews.first { $0.accessibilityIdentifier == "inline-annotation-text" } as? UITextView)
+        XCTAssertEqual(input.text, "Original")
+        input.text = "Edited on the page"
+        workspace.textStyle.size = 30
+        view.finishTextEntry()
+        XCTAssertEqual(annotation.contents, "Edited on the page")
+        XCTAssertEqual(annotation.font?.pointSize, 30)
+        workspace.undo()
+        XCTAssertEqual(annotation.contents, "Original")
+        XCTAssertEqual(annotation.font?.pointSize, 16)
+    }
+
+    func testCancellingInlineTextOrFinishingUnchangedTextDoesNotAddHistory() throws {
+        let workspace = PDFWorkspace(url: try library.createWelcome())
+        let view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        view.beginTextEntry(on: page, bounds: CGRect(x: 50, y: 200, width: 250, height: 80))
+        let input = try XCTUnwrap(view.subviews.first { $0.accessibilityIdentifier == "inline-annotation-text" } as? UITextView)
+        input.text = "Cancelled"
+        view.cancelTextEntry()
+        XCTAssertFalse(workspace.dirty)
+        XCTAssertTrue(page.annotations.isEmpty)
+        workspace.addText("Existing", note: true)
+        view.beginTextEntry(annotation: try XCTUnwrap(page.annotations.first))
+        view.finishTextEntry()
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty, "Opening unchanged text must not create an extra undo step")
     }
 }
