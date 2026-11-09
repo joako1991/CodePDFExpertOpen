@@ -18,7 +18,7 @@ extension PDFWorkspace {
         var box = CGRect(x: min(first.x,last.x), y: min(first.y,last.y), width: max(1,abs(last.x-first.x)), height: max(1,abs(last.y-first.y)))
         if tool == .line || tool == .arrow { box = box.insetBy(dx:-max(6,lineWidth*4),dy:-max(6,lineWidth*4)) }
         let annotation = PDFAnnotation(bounds: box, forType: tool == .oval ? .circle : (tool == .rectangle ? .square : .line), withProperties: nil)
-        annotation.color = UIColor(inkColor).withAlphaComponent(opacity)
+        annotation.setAppearanceColor(UIColor(inkColor),opacity:opacity)
         annotation.contents = L10n.tr(tool.title)
         let border = PDFBorder(); border.lineWidth = lineWidth
         border.style = shapeStyle.pattern == .solid ? .solid : .dashed
@@ -53,7 +53,7 @@ extension PDFWorkspace {
         }
         let additions = bands.sorted { $0.key < $1.key }.map { band, paths -> (PDFPage, PDFAnnotation) in
             let annotation = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
-            annotation.color = UIColor(inkColor).withAlphaComponent(opacity)
+            annotation.setAppearanceColor(UIColor(inkColor),opacity:opacity)
             annotation.contents = L10n.tr(marker ? "Marqueur libre" : "Dessiner")
             annotation.setValue(group + "-\(band)", forAnnotationKey: .name)
             let border = PDFBorder(); border.lineWidth = lineWidth * CGFloat(band)/8; annotation.border = border
@@ -70,7 +70,7 @@ extension PDFWorkspace {
             let size: CGFloat = 24
             let origin = CGPoint(x: min(max(point.x,box.minX),box.maxX-size), y: min(max(point.y-size,box.minY),box.maxY-size))
             let annotation = PDFAnnotation(bounds: CGRect(origin: origin,size: CGSize(width:size,height:size)), forType: .ink, withProperties: nil)
-            annotation.color = UIColor(inkColor).withAlphaComponent(opacity)
+            annotation.setAppearanceColor(UIColor(inkColor),opacity:opacity)
             annotation.contents = L10n.tr(tool.title)
             let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
             if tool == .checkmark { annotation.add(AnnotationGeometry.path([CGPoint(x:2,y:12),CGPoint(x:9,y:4),CGPoint(x:22,y:22)])) }

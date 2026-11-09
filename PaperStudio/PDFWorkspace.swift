@@ -307,7 +307,7 @@ final class PDFWorkspace: ObservableObject {
             guard (pdfView as? DrawingPDFView)?.isEditingText != true else { return }
             annotation.font = textStyle.font; annotation.fontColor = UIColor(textStyle.color)
         } else {
-            annotation.color = UIColor(inkColor).withAlphaComponent(opacity)
+            annotation.setAppearanceColor(UIColor(inkColor),opacity:opacity)
             if annotation.type == "Square" || annotation.type == "Circle" { annotation.interiorColor = shapeStyle.filled ? annotation.color : .clear }
             let border = PDFBorder()
             if annotation.type == "Ink", let before = appearanceBefore.first(where: { $0.annotation === annotation }) {
@@ -342,18 +342,25 @@ final class PDFWorkspace: ObservableObject {
         finishInteraction()
         guard let page = annotation.page, page.document === document else { return }
         if !editorMode.tools.contains(.move) { editorMode = .annotate }
-        activeTool = .move; selectedAnnotation = annotation
-        inkColor = Color(annotation.color.withAlphaComponent(1)); opacity = Double(annotation.color.cgColor.alpha)
+        activeTool = .move; selectCanvasAnnotation(annotation)
+        pdfView?.go(to:annotation.bounds.insetBy(dx:-20,dy:-20),on:page)
+    }
+
+    func selectCanvasAnnotation(_ annotation: PDFAnnotation?) {
+        finishAppearanceEditing()
+        selectedAnnotation = annotation
+        guard let annotation, annotation.page?.document === document else { return }
+        inkColor = Color(annotation.color.withAlphaComponent(1)); opacity = Double(annotation.appearanceOpacity)
         lineWidth = annotation.border?.lineWidth ?? 2
         if let name = annotation.value(forAnnotationKey:.name) as? String, name.hasPrefix("PaperStudio-"),
            let band = name.split(separator:"-").last.flatMap({Int($0)}), band > 0 {
             lineWidth = lineWidth*8/CGFloat(band)
         }
         shapeStyle.pattern = annotation.border?.style == .dashed ? .dashed : .solid
+        if annotation.border?.dashPattern as? [NSNumber] == StrokePattern.dotted.dash.map({NSNumber(value:Double($0))}) { shapeStyle.pattern = .dotted }
         shapeStyle.filled = (annotation.interiorColor?.cgColor.alpha ?? 0) > 0
         if annotation.type == "Line" { shapeStyle.doubleArrow = annotation.startLineStyle == .closedArrow }
         if annotation.type == "FreeText" { readTextStyle(from:annotation) }
-        pdfView?.go(to:annotation.bounds.insetBy(dx:-20,dy:-20),on:page)
     }
 
     func toggleBookmark() {
@@ -488,7 +495,7 @@ final class PDFWorkspace: ObservableObject {
     func applyMarkup(_ selection: PDFSelection, type: PDFAnnotationSubtype) {
         guard !(selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         var additions: [(PDFPage, CGRect)] = []
-        let color = UIColor(inkColor).withAlphaComponent(opacity)
+        let color = UIColor(inkColor)
         for line in selection.selectionsByLine() {
             for page in line.pages {
                 guard page.document === document else { continue }
@@ -504,7 +511,7 @@ final class PDFWorkspace: ObservableObject {
         guard !additions.isEmpty else { return }
         addAnnotations(additions.map { page, bounds in
             let annotation = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
-            annotation.color = color
+            annotation.setAppearanceColor(color,opacity:opacity)
             let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
             return (page, annotation)
         })

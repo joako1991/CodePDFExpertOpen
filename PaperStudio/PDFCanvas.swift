@@ -393,7 +393,7 @@ final class DrawingPDFView: PDFView {
             updateToolGesture(at: CGPoint(x: location.x+0.1,y:location.y))
             endToolGesture(at: location)
         }
-        else { workspace.selectedAnnotation = hit }
+        else { workspace.selectCanvasAnnotation(hit) }
     }
 
     @objc private func drag(_ gesture: UIPanGestureRecognizer) {
@@ -438,7 +438,7 @@ final class DrawingPDFView: PDFView {
             if !resizing { movingAnnotation = page.annotations.reversed().first { $0.type != "Widget" && $0.bounds.insetBy(dx: -4, dy: -4).contains(point) } }
             initialBounds = movingAnnotation?.bounds ?? .zero
             movingGroup = movingAnnotation.map { workspace.groupedAnnotations($0).map { ($0,$0.bounds) } } ?? []
-            if workspace.selectedAnnotation !== movingAnnotation { workspace.selectedAnnotation = movingAnnotation }
+            if workspace.selectedAnnotation !== movingAnnotation { workspace.selectCanvasAnnotation(movingAnnotation) }
         }
         previewDirty = true
         startFrames()

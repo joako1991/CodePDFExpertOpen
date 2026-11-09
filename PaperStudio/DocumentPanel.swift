@@ -118,7 +118,7 @@ private struct InkAnnotationPreview: View {
             let transform = CGAffineTransform(a:scale,b:0,c:0,d:-scale,tx:0,ty:size.height)
             for annotation in annotations {
                 for path in annotation.paths ?? [] {
-                    context.stroke(Path(path.cgPath).applying(transform),with:.color(Color(annotation.color)),lineWidth:max(1,(annotation.border?.lineWidth ?? 1)*scale))
+                    context.stroke(Path(path.cgPath).applying(transform),with:.color(Color(annotation.color.withAlphaComponent(annotation.appearanceOpacity))),lineWidth:max(1,(annotation.border?.lineWidth ?? 1)*scale))
                 }
             }
         }

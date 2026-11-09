@@ -6,6 +6,19 @@ mkdir -p build
 if [[ "${GITHUB_ACTIONS:-}" == true && -d Vendor/mupdf ]]; then
   cached_changes=$(git -C Vendor/mupdf status --porcelain --untracked-files=normal 2>&1)
   cached_status=$?
+  if [[ "$cached_status" == 0 && -n "$cached_changes" ]] && printf '%s\n' "$cached_changes" | python3 -c '
+import sys
+changes=sys.stdin.read().splitlines()
+sys.exit(0 if changes and all(line.startswith(" M generated/resources/fonts/") and line.endswith(".c") for line in changes) else 1)
+'; then
+    # MuPDF regenerates tracked font C arrays during an Apple build. Preserve that
+    # diff, then use the pinned originals; Make rebuilds only those font objects.
+    git -C Vendor/mupdf diff --binary -- generated/resources/fonts > build/cached-generated-fonts.patch
+    git -C Vendor/mupdf restore --worktree -- generated/resources/fonts
+    cached_changes=$(git -C Vendor/mupdf status --porcelain --untracked-files=normal 2>&1)
+    cached_status=$?
+    echo 'Restored pinned generated font arrays; cached compilation objects retained.'
+  fi
   if [[ "$cached_status" != 0 || -n "$cached_changes" ]]; then
     echo "::warning title=MuPDF cache::Restored dependency cache is not pristine; preserving it and fetching clean sources."
     printf '%s\n' "$cached_changes" | python3 -c 'import sys; [print("::warning title=Cached dependency change::" + line.rstrip().replace("%", "%25")) for line in sys.stdin]'
