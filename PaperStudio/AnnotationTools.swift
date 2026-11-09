@@ -41,12 +41,15 @@ extension PDFWorkspace {
         let bounds = CGRect(x: xs.min()!, y: ys.min()!, width: max(1,xs.max()!-xs.min()!), height: max(1,ys.max()!-ys.min()!)).insetBy(dx: -lineWidth*2, dy: -lineWidth*2)
         let group = "PaperStudio-" + UUID().uuidString
         var bands: [Int: [UIBezierPath]] = [:]
+        var previousBand: Int?
         for i in 1..<points.count {
             let force = pressures.indices.contains(i) ? pressures[i] : nil
             let multiplier = !marker && pressureSensitive ? force.map { 0.25 + min(1,max(0,$0))*1.75 } ?? 1 : 1
             let band = Int((multiplier*8).rounded())
             let local = [points[i-1],points[i]].map { CGPoint(x: $0.x-bounds.minX, y: $0.y-bounds.minY) }
-            bands[band, default: []].append(AnnotationGeometry.path(local))
+            if previousBand == band, let path = bands[band]?.last { path.addLine(to:local[1]) }
+            else { bands[band, default: []].append(AnnotationGeometry.path(local)) }
+            previousBand = band
         }
         let additions = bands.sorted { $0.key < $1.key }.map { band, paths -> (PDFPage, PDFAnnotation) in
             let annotation = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
@@ -67,9 +70,9 @@ extension PDFWorkspace {
             let size: CGFloat = 24
             let origin = CGPoint(x: min(max(point.x,box.minX),box.maxX-size), y: min(max(point.y-size,box.minY),box.maxY-size))
             let annotation = PDFAnnotation(bounds: CGRect(origin: origin,size: CGSize(width:size,height:size)), forType: .ink, withProperties: nil)
-            annotation.color = UIColor(inkColor)
+            annotation.color = UIColor(inkColor).withAlphaComponent(opacity)
             annotation.contents = L10n.tr(tool.title)
-            let border = PDFBorder(); border.lineWidth = 2.5; annotation.border = border
+            let border = PDFBorder(); border.lineWidth = lineWidth; annotation.border = border
             if tool == .checkmark { annotation.add(AnnotationGeometry.path([CGPoint(x:2,y:12),CGPoint(x:9,y:4),CGPoint(x:22,y:22)])) }
             else {
                 annotation.add(AnnotationGeometry.path([CGPoint(x:3,y:3),CGPoint(x:21,y:21)]))

@@ -66,7 +66,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
     }
     var selectsText: Bool { markup != nil || self == .replaceText }
     var defaultColor: Color {
-        switch self { case .highlight, .freeHighlighter: return .yellow; case .underline: return .blue; case .strikeOut, .rectangle, .oval, .line, .arrow: return .red; case .text, .pen, .signature, .date, .checkmark, .cross: return .black; case .stamp: return .red; default: return .indigo }
+        switch self { case .highlight, .freeHighlighter, .note: return .yellow; case .underline: return .blue; case .strikeOut, .rectangle, .oval, .line, .arrow: return .red; case .text, .pen, .signature, .date, .checkmark, .cross: return .black; case .stamp: return .red; default: return .indigo }
     }
 }
 
@@ -534,7 +534,7 @@ final class PDFWorkspace: ObservableObject {
         annotation.contents = text
         annotation.font = textStyle.font
         annotation.fontColor = UIColor(textStyle.color)
-        annotation.color = placement.note ? .systemYellow : .clear
+        annotation.color = placement.note ? UIColor(inkColor).withAlphaComponent(opacity) : .clear
         let border = PDFBorder(); border.lineWidth = 0; annotation.border = border
         addAnnotations([(placement.page, annotation)], cost: 1024 + text.utf8.count)
         if annotation.page != nil { selectedAnnotation = annotation }
@@ -672,8 +672,8 @@ final class PDFWorkspace: ObservableObject {
         let x = min(max(anchor.x, box.minX), box.maxX - width)
         let y = min(max(anchor.y - height, box.minY), box.maxY - height)
         let annotation = PDFAnnotation(bounds: CGRect(x: x, y: y, width: width, height: height), forType: .ink, withProperties: nil)
-        annotation.color = .black
-        let border = PDFBorder(); border.lineWidth = 2; annotation.border = border
+        annotation.color = activeTool == .signature ? UIColor(inkColor).withAlphaComponent(opacity) : .black
+        let border = PDFBorder(); border.lineWidth = activeTool == .signature ? lineWidth : 2; annotation.border = border
         for stroke in strokes where stroke.count > 1 {
             let path = UIBezierPath()
             for (index, point) in stroke.enumerated() {

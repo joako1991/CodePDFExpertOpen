@@ -34,10 +34,12 @@ Utiliser un chemin **sans espaces** : les Makefiles de MuPDF n’acceptent pas t
 ```bash
 mkdir -p ~/Developer
 cd ~/Developer
-git clone --branch v0.1 https://github.com/joako1991/CodePDFExpertOpen.git
+git clone --branch main https://github.com/joako1991/CodePDFExpertOpen.git
 cd CodePDFExpertOpen
 bash scripts/fetch-mupdf.sh
 ```
+
+`main` contient les nouveaux outils et comportements de la vidéo. Le tag `v0.1` conserve la première version publiée ; utiliser `--branch v0.1` uniquement pour reconstruire cette version. Dans un clone existant, conserver vos modifications locales (notamment la signature Xcode), puis exécuter `git fetch origin`, `git switch main` et `git pull --ff-only origin main` pour mettre à jour l’application.
 
 Le script clone MuPDF 1.28.6 dans `Vendor/mupdf`, vérifie le commit exact et récupère les sous-modules requis à leurs révisions épinglées. Il refuse de réinitialiser des modifications locales ou une autre version. Les notices de licence et de polices sont copiées dans `PaperStudio/Legal/MuPDFNotices/` avec leurs empreintes. Ces répertoires sont générés, exclus du dépôt Git et nécessaires à la compilation ; pas de package binaire propriétaire.
 
@@ -87,7 +89,7 @@ Le scanner caméra s’active seulement sur les appareils VisionKit compatibles.
 bash scripts/test-ios.sh
 ```
 
-Le script sélectionne automatiquement un simulateur iPad disponible et lance les **24 XCTest**. Pour imposer un appareil :
+Le script sélectionne automatiquement un simulateur iPad disponible et lance les **65 XCTest** sur `main` (24 dans le tag initial `v0.1`). Pour imposer un appareil :
 
 ```bash
 xcrun simctl list devices available
@@ -113,7 +115,7 @@ Tests manuels prioritaires sur iPad : remplacement d’une ligne et annulation, 
 | Image inline | Cette forme d’image n’est pas remplaçable en 0.1. |
 | Résultat Word imparfait | La conversion locale ne garantit pas la fidélité des tableaux, colonnes, images et polices. |
 
-**La compilation et les tests sur simulateur ont réussi dans le [job macOS GitHub Actions](https://github.com/joako1991/CodePDFExpertOpen/actions/runs/41610773961).** L’environnement local de préparation est Linux ; les contrôles syntaxiques locaux ne remplacent pas cette validation distante. La signature pour votre compte, les essais caméra/Pencil et le comportement sur votre iPad restent à vérifier sur appareil.
+La compilation et les tests sur simulateur sont exécutés par le [workflow macOS GitHub Actions](https://github.com/joako1991/CodePDFExpertOpen/actions/workflows/ipados.yml) ; vérifier le résultat du commit utilisé. L’environnement local de préparation est Linux ; les contrôles syntaxiques locaux ne remplacent pas cette validation distante. La signature pour votre compte, les essais caméra/Pencil et le comportement sur votre iPad restent à vérifier sur appareil. Pour reproduire la vidéo et contrôler les fonctions Premium disponibles, consulter [la comparaison détaillée](REFERENCE_BEHAVIOR.md).
 
 ## 7. Licence et diffusion
 

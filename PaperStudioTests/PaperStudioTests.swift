@@ -463,11 +463,14 @@ final class PaperStudioTests: XCTestCase {
 
     func testSignatureUsesChosenLocationInsteadOfPageCentre() throws {
         let workspace = PDFWorkspace(url: try library.createWelcome())
+        workspace.activeTool = .signature; workspace.inkColor = .blue; workspace.lineWidth = 3
         workspace.addSignature([[CGPoint(x: 5, y: 5), CGPoint(x: 80, y: 20)]],
             size: CGSize(width: 100, height: 50), on: workspace.page, at: CGPoint(x: 45, y: 200))
         let annotation = try XCTUnwrap(workspace.page?.annotations.first)
         XCTAssertEqual(annotation.bounds.minX, 45)
         XCTAssertEqual(annotation.bounds.maxY, 200)
+        XCTAssertEqual(annotation.color,UIColor(Color.blue))
+        XCTAssertEqual(annotation.border?.lineWidth,3)
     }
 
     func testAllThreeLanguagesAreBundledAndTranslateInterfaceAndErrors() {
@@ -639,6 +642,7 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertTrue(page.annotations.isEmpty)
         XCTAssertFalse(workspace.dirty)
         XCTAssertNil(workspace.placement, "Text entry belongs on the page, without presenting a sheet")
+        XCTAssertEqual(input.backgroundColor,.clear, "Typing must leave the underlying page visible")
         input.text = "Type directly here"
         workspace.textStyle.size = 24
         workspace.textStyle.weight = .bold
@@ -934,6 +938,7 @@ final class PaperStudioTests: XCTestCase {
         let page = try XCTUnwrap(workspace.page)
         workspace.activeTool = .freeHighlighter
         view.beginToolGesture(at:view.convert(CGPoint(x:50,y:200),from:page))
+        view.updateToolGesture(at:view.convert(CGPoint(x:100,y:225),from:page))
         view.updateToolGesture(at:view.convert(CGPoint(x:150,y:250),from:page))
         view.renderInteractionFrame()
         let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "tool-preview" } as? CAShapeLayer)
@@ -943,6 +948,7 @@ final class PaperStudioTests: XCTestCase {
         view.endToolGesture(at:view.convert(CGPoint(x:150,y:250),from:page))
         let ink = try XCTUnwrap(page.annotations.first)
         XCTAssertEqual(ink.type,"Ink")
+        XCTAssertEqual(ink.paths?.count,1,"A continuous marker stroke must not accumulate opacity at sample joins")
         XCTAssertEqual(ink.color.cgColor.alpha,0.4,accuracy:0.01)
         XCTAssertEqual(ink.border?.lineWidth,14)
         XCTAssertTrue(workspace.save())
@@ -1044,6 +1050,7 @@ final class PaperStudioTests: XCTestCase {
         let url = try library.createWelcome(), workspace = PDFWorkspace(url:url)
         let page = try XCTUnwrap(workspace.page)
         workspace.activeTool = .checkmark
+        workspace.inkColor = .blue; workspace.lineWidth = 4; workspace.opacity = 0.7
         workspace.placeMark(.checkmark,on:page,at:CGPoint(x:50,y:300))
         workspace.placeMark(.checkmark,on:page,at:CGPoint(x:90,y:300))
         workspace.placeMark(.cross,on:page,at:CGPoint(x:130,y:300))
@@ -1053,6 +1060,8 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(page.annotations.count,5)
         XCTAssertEqual(page.annotations.filter { $0.type == "Ink" }.count,3)
         XCTAssertEqual(page.annotations[2].paths?.count,2)
+        XCTAssertEqual(page.annotations[0].border?.lineWidth,4)
+        XCTAssertEqual(page.annotations[0].color.cgColor.alpha,0.7,accuracy:0.01)
         XCTAssertTrue(workspace.save())
         XCTAssertEqual(PDFDocument(url:url)?.page(at:0)?.annotations.count,5)
         XCTAssertTrue(PDFDocument(url:url)?.page(at:0)?.annotations.contains { $0.contents == "REVIEWED" } == true)

@@ -75,6 +75,7 @@ struct EditorToolsView: View {
                         }
                     }
                     Spacer(minLength:4)
+                    if hasToolSettings {
                     Button { settings = true } label: { Image(systemName:"slider.horizontal.3") }
                         .accessibilityLabel("Réglages de l’outil")
                         .popover(isPresented:$settings) {
@@ -88,6 +89,7 @@ struct EditorToolsView: View {
                                 .onChange(of:workspace.shapeStyle) { _ in workspace.previewSelectedAppearance() }
                                 .onChange(of:workspace.textStyle) { _ in workspace.previewSelectedAppearance() }
                         }
+                    }
                     Button("Terminer") { workspace.finishInteraction(); workspace.activeTool = .read }.font(.caption)
                 }.padding(.horizontal,16)
                 Text(LocalizedStringKey(workspace.activeTool.instruction)).font(.caption).foregroundStyle(.secondary)
@@ -111,6 +113,7 @@ struct EditorToolsView: View {
         return ![.read, .erase, .insertImage, .targetImage, .link, .redact, .replaceText].contains(workspace.activeTool)
     }
     private var selectedColor: Color { editingText ? workspace.textStyle.color : workspace.inkColor }
+    private var hasToolSettings: Bool { showsAppearanceControls || [.erase, .insertImage].contains(workspace.activeTool) }
 
     private func setTextStyle(_ change: (inout TextStyle) -> Void) {
         workspace.beginAppearanceEditing()
@@ -120,7 +123,9 @@ struct EditorToolsView: View {
 
     private func toolButton(_ tool: CanvasTool) -> some View {
         Button {
-            if workspace.activeTool == tool && tool != .read { settings = true }
+            if workspace.activeTool == tool && tool != .read {
+                if hasToolSettings { settings = true }
+            }
             else {
                 workspace.finishInteraction(); workspace.activeTool = tool
                 if tool == .signature && workspace.signatureStrokes.isEmpty { signature() }
@@ -143,6 +148,7 @@ struct EditorToolsView: View {
             else if workspace.activeTool == .insertImage { Button("Choisir une image",action:pickImage) }
             else if workspace.activeTool == .date { DatePicker("Date",selection:$workspace.stampDate,displayedComponents:.date) }
             else if workspace.activeTool == .stamp { TextField("Texte du tampon",text:$workspace.stampText).textFieldStyle(.roundedBorder) }
+            else if workspace.activeTool == .note { ColorPicker("Couleur",selection:$workspace.inkColor,supportsOpacity:false) }
             else if workspace.activeTool == .erase {
                 Picker("Mode de gomme",selection:$workspace.eraserMode) { ForEach(EraserMode.allCases) { Text(LocalizedStringKey($0.title)).tag($0) } }.pickerStyle(.segmented)
                 Slider(value:$workspace.eraserSize,in:4...30) { Text("Taille de la gomme") }

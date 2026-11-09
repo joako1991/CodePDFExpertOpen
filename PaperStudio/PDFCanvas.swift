@@ -501,6 +501,9 @@ final class DrawingPDFView: PDFView {
         for (from,to) in segments {
             var groupNames: Set<String> = []
             for annotation in page.annotations where annotation.type == "Ink" {
+                let radius = workspace.eraserSize + (annotation.border?.lineWidth ?? 1)/2
+                let swept = CGRect(x:min(from.x,to.x),y:min(from.y,to.y),width:abs(to.x-from.x),height:abs(to.y-from.y)).insetBy(dx:-radius,dy:-radius)
+                guard annotation.bounds.intersects(swept) else { continue }
                 let result = AnnotationGeometry.erase(annotation, from: from, to: to, radius:workspace.eraserSize, partial:workspace.eraserMode == .partial)
                 guard result.changed else { continue }
                 touched = true
@@ -692,7 +695,7 @@ final class DrawingPDFView: PDFView {
         input.accessibilityIdentifier = "inline-annotation-text"
         input.delegate = textDelegate
         input.text = annotation?.contents ?? ""
-        input.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
+        input.backgroundColor = .clear
         input.layer.borderColor = UIColor.systemBlue.cgColor
         input.layer.borderWidth = 1
         input.layer.zPosition = 102
