@@ -864,7 +864,7 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(arrow.color,UIColor(Color.black))
         XCTAssertEqual(arrow.border?.lineWidth,5)
         XCTAssertEqual(arrow.startLineStyle,.closedArrow)
-        workspace.finishAppearanceEditing()
+        // Undo must also work while the live settings popover is still open.
         workspace.undo()
         XCTAssertEqual(arrow.color,original)
         XCTAssertEqual(arrow.border?.lineWidth,2)

@@ -695,7 +695,7 @@ final class DrawingPDFView: PDFView {
         input.accessibilityIdentifier = "inline-annotation-text"
         input.delegate = textDelegate
         input.text = annotation?.contents ?? ""
-        input.backgroundColor = .clear
+        input.backgroundColor = annotation == nil ? .clear : UIColor.systemBackground.withAlphaComponent(0.95)
         input.layer.borderColor = UIColor.systemBlue.cgColor
         input.layer.borderWidth = 1
         input.layer.zPosition = 102

@@ -243,6 +243,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func undo() {
+        finishAppearanceEditing()
         (pdfView as? DrawingPDFView)?.finishTextEntry()
         guard canEdit, let edit = history.popLast() else { return }
         (pdfView as? DrawingPDFView)?.cancelToolGesture()
@@ -255,6 +256,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func redo() {
+        finishAppearanceEditing()
         (pdfView as? DrawingPDFView)?.finishTextEntry()
         guard canEdit, let edit = future.popLast() else { return }
         (pdfView as? DrawingPDFView)?.cancelToolGesture()
@@ -297,7 +299,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func previewSelectedAppearance() {
-        guard let annotation = selectedAnnotation, annotation.supportsAppearanceEditing,
+        guard !appearanceBefore.isEmpty, let annotation = selectedAnnotation, annotation.supportsAppearanceEditing,
               let page = annotation.page, page.document === document,
               activeTool.isShape || activeTool == .move || activeTool == .text else { return }
         for annotation in groupedAnnotations(annotation) {
