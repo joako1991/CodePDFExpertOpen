@@ -10,73 +10,147 @@ struct EditorToolsView: View {
     let merge: () -> Void
     let deletePage: () -> Void
     let editAnnotation: () -> Void
+    let pickImage: () -> Void
+    let exportAction: (EditorExportAction) -> Void
     @State private var settings = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    Button { showPages.toggle() } label: { Label("Pages", systemImage: "sidebar.left") }
-                    ForEach(CanvasTool.allCases) { toolButton($0) }
-                    Button { ocr() } label: { Label("OCR", systemImage: "text.viewfinder") }
-                    Button { forms() } label: { Label("Formulaire", systemImage: "list.clipboard") }
-                    organize
-                }.padding(.horizontal, 16)
-            }
+        VStack(spacing: 8) {
+            Picker("Mode du document", selection: $workspace.editorMode) {
+                ForEach(EditorMode.allCases) { Text(LocalizedStringKey($0.title)).tag($0) }
+            }.pickerStyle(.segmented).frame(maxWidth: 600).padding(.horizontal)
+                .accessibilityIdentifier("editor-mode")
+            HStack(spacing: 8) {
+                Button { showPages.toggle() } label: { Image(systemName: "sidebar.left") }
+                    .accessibilityLabel("Panneau du document")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        if workspace.editorMode == .export {
+                            ForEach(EditorExportAction.allCases) { action in
+                                Button { exportAction(action) } label: { Label(LocalizedStringKey(action.title),systemImage:action.symbol) }.buttonStyle(.bordered)
+                            }
+                        } else {
+                            ForEach(workspace.editorMode.tools) { toolButton($0) }
+                            if workspace.editorMode == .fillSign {
+                                Button(action:forms) { Label("Formulaire",systemImage:"list.clipboard") }
+                            }
+                        }
+                    }
+                }
+                if workspace.editorMode != .export {
+                    Menu {
+                        Button("OCR",systemImage:"text.viewfinder",action:ocr)
+                        Button("Ajouter un autre PDF",systemImage:"plus.rectangle.on.rectangle",action:merge)
+                        Button("Tourner de 90°",systemImage:"rotate.right") { workspace.rotate() }
+                        Button("Déplacer avant",systemImage:"arrow.up") { workspace.movePage(by:-1) }.disabled(workspace.pageIndex == 0)
+                        Button("Déplacer après",systemImage:"arrow.down") { workspace.movePage(by:1) }.disabled(workspace.pageIndex+1 >= (workspace.document?.pageCount ?? 0))
+                        Button("Supprimer la page",systemImage:"trash",role:.destructive,action:deletePage).disabled((workspace.document?.pageCount ?? 0) < 2)
+                    } label: { Image(systemName:"ellipsis.circle") }.accessibilityLabel("Organiser")
+                }
+            }.padding(.horizontal,16)
             if workspace.activeTool != .read {
-                HStack(spacing: 16) {
-                    Text(LocalizedStringKey(workspace.activeTool.instruction)).font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 4)
-                    Button { settings = true } label: { Label("Réglages de l’outil", systemImage: "slider.horizontal.3") }
-                        .popover(isPresented: $settings) { configuration.padding().frame(width: 320).presentationCompactAdaptation(.popover) }
-                    Button("Terminer") { workspace.activeTool = .read }.keyboardShortcut(.escape, modifiers: [])
-                }.padding(.horizontal, 16)
+                HStack(spacing: 10) {
+                    if workspace.activeTool == .text {
+                        Menu {
+                            ForEach(TextFamily.allCases) { family in
+                                Button(LocalizedStringKey(family.title)) { workspace.textStyle.useFamily(family) }
+                            }
+                        } label: { Text(LocalizedStringKey(workspace.textStyle.family.title)).font(.caption) }
+                        Button { workspace.textStyle.size = max(6,workspace.textStyle.size-1) } label: { Image(systemName:"minus") }
+                        Text("\(Int(workspace.textStyle.size)) pt").font(.caption.monospacedDigit())
+                        Button { workspace.textStyle.size = min(96,workspace.textStyle.size+1) } label: { Image(systemName:"plus") }
+                    }
+                    if workspace.activeTool != .erase && workspace.activeTool != .read {
+                        ForEach(Array(ToolPalette.colors.enumerated()),id:\.offset) { index,color in
+                            Button {
+                                workspace.beginAppearanceEditing()
+                                if workspace.activeTool == .text { workspace.textStyle.color = color }
+                                else { workspace.inkColor = color }
+                                workspace.previewSelectedAppearance(); workspace.finishAppearanceEditing()
+                            } label: {
+                                Circle().fill(color).frame(width:19,height:19)
+                                    .overlay(Circle().stroke(.primary.opacity(0.35),lineWidth:1))
+                                    .padding(3).background(RoundedRectangle(cornerRadius:6).stroke(selectedColor == color ? Color.accentColor : .clear,lineWidth:2))
+                            }.accessibilityLabel(Text(LocalizedStringKey(ToolPalette.names[index])))
+                        }
+                    }
+                    Spacer(minLength:4)
+                    Button { settings = true } label: { Image(systemName:"slider.horizontal.3") }
+                        .accessibilityLabel("Réglages de l’outil")
+                        .popover(isPresented:$settings) {
+                            configuration.padding().frame(width:320)
+                                .presentationCompactAdaptation(.popover)
+                                .onAppear { workspace.beginAppearanceEditing() }
+                                .onDisappear { workspace.finishAppearanceEditing() }
+                                .onChange(of:workspace.inkColor) { _ in workspace.previewSelectedAppearance() }
+                                .onChange(of:workspace.lineWidth) { _ in workspace.previewSelectedAppearance() }
+                                .onChange(of:workspace.opacity) { _ in workspace.previewSelectedAppearance() }
+                                .onChange(of:workspace.shapeStyle) { _ in workspace.previewSelectedAppearance() }
+                        }
+                    Button("Terminer") { workspace.finishInteraction(); workspace.activeTool = .read }.font(.caption)
+                }.padding(.horizontal,16)
+                Text(LocalizedStringKey(workspace.activeTool.instruction)).font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,16)
             }
             if let annotation = workspace.selectedAnnotation {
                 HStack {
-                    Text("Annotation sélectionnée").font(.caption)
-                    if annotation.type == "FreeText" || annotation.type == "Text" {
-                        Button("Modifier le texte", action: editAnnotation)
-                    }
-                    Button("Supprimer l’annotation", role: .destructive) { workspace.removeAnnotation(annotation) }
-                }.padding(.horizontal, 16)
+                    Image(systemName:"cursorarrow").font(.caption)
+                    Text(annotation.contents?.isEmpty == false ? annotation.contents! : L10n.tr("Annotation sélectionnée")).font(.caption).lineLimit(1)
+                    Spacer()
+                    if annotation.type == "FreeText" || annotation.type == "Text" { Button("Modifier le texte",action:editAnnotation) }
+                    Button("Supprimer l’annotation",role:.destructive) { workspace.removeAnnotation(annotation) }
+                }.font(.caption).padding(.horizontal,16)
             }
-        }.buttonStyle(.bordered).padding(.vertical, 10).background(Color(uiColor: .secondarySystemBackground))
+        }.buttonStyle(.plain).padding(.vertical,8).background(Color(uiColor:.secondarySystemBackground))
     }
+
+    private var selectedColor: Color { workspace.activeTool == .text ? workspace.textStyle.color : workspace.inkColor }
 
     private func toolButton(_ tool: CanvasTool) -> some View {
         Button {
-            workspace.toggleTool(tool)
-            if tool == .signature, workspace.activeTool == .signature, workspace.signatureStrokes.isEmpty { signature() }
-        } label: { Label(LocalizedStringKey(tool.title), systemImage: tool.symbol) }
-            .tint(workspace.activeTool == tool ? .indigo : .secondary)
-            .background(workspace.activeTool == tool ? Color.indigo.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            if workspace.activeTool == tool && tool != .read { settings = true }
+            else {
+                workspace.finishInteraction(); workspace.activeTool = tool
+                if tool == .signature && workspace.signatureStrokes.isEmpty { signature() }
+                if tool == .insertImage { pickImage() }
+            }
+        } label: {
+            Image(systemName:tool.symbol).font(.system(size:18)).frame(width:36,height:34)
+                .foregroundStyle(workspace.activeTool == tool ? Color.accentColor : .primary)
+                .background(workspace.activeTool == tool ? Color.accentColor.opacity(0.14) : .clear,in:RoundedRectangle(cornerRadius:8))
+        }.accessibilityLabel(Text(LocalizedStringKey(tool.title)))
             .accessibilityValue(Text(LocalizedStringKey(workspace.activeTool == tool ? "Activé" : "Désactivé")))
-            .accessibilityIdentifier("tool-\(tool.rawValue)")
+            .accessibilityIdentifier("tool-\(tool.rawValue)").help(L10n.tr(tool.title))
     }
 
     @ViewBuilder private var configuration: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment:.leading,spacing:16) {
             Text(LocalizedStringKey(workspace.activeTool.title)).font(.headline)
-            if workspace.activeTool == .text { TextStyleControls(style: $workspace.textStyle) }
+            if workspace.activeTool == .text { TextStyleControls(style:$workspace.textStyle) }
             else if workspace.activeTool == .signature { Button("Configurer la signature") { settings = false; signature() } }
-            else if workspace.activeTool.markup != nil || [.pen, .rectangle, .oval].contains(workspace.activeTool) {
-                ColorPicker("Couleur", selection: $workspace.inkColor, supportsOpacity: false)
-                Stepper(value: $workspace.lineWidth, in: 1...8) { Text("Épaisseur : \(Int(workspace.lineWidth)) pt") }
-            } else { Text(LocalizedStringKey(workspace.activeTool.instruction)) }
+            else if workspace.activeTool == .insertImage { Button("Choisir une image",action:pickImage) }
+            else if workspace.activeTool == .date { DatePicker("Date",selection:$workspace.stampDate,displayedComponents:.date) }
+            else if workspace.activeTool == .stamp { TextField("Texte du tampon",text:$workspace.stampText).textFieldStyle(.roundedBorder) }
+            else if workspace.activeTool == .erase {
+                Picker("Mode de gomme",selection:$workspace.eraserMode) { ForEach(EraserMode.allCases) { Text(LocalizedStringKey($0.title)).tag($0) } }.pickerStyle(.segmented)
+                Slider(value:$workspace.eraserSize,in:4...30) { Text("Taille de la gomme") }
+            } else if workspace.activeTool.markup != nil || workspace.activeTool.draws || workspace.activeTool == .move {
+                ColorPicker("Couleur",selection:$workspace.inkColor,supportsOpacity:false)
+                Slider(value:$workspace.lineWidth,in:0.5...24,step:0.5) { Text("Épaisseur") }
+                Text(L10n.format("Épaisseur : %.1f pt",Double(workspace.lineWidth))).font(.caption)
+                Slider(value:$workspace.opacity,in:0.25...1) { Text("Opacité") }
+                Text(L10n.format("Opacité : %lld %%",Int(workspace.opacity*100))).font(.caption)
+                if workspace.activeTool == .pen {
+                    Toggle("Pression du Pencil",isOn:$workspace.pressureSensitive).disabled(workspace.convertHandwriting)
+                    Toggle("Convertir l’écriture en texte",isOn:$workspace.convertHandwriting)
+                }
+                if workspace.activeTool.isShape || workspace.activeTool == .move {
+                    Picker("Style de bord",selection:$workspace.shapeStyle.pattern) { ForEach(StrokePattern.allCases) { Text(LocalizedStringKey($0.title)).tag($0) } }
+                    if workspace.activeTool == .arrow { Toggle("Double flèche",isOn:$workspace.shapeStyle.doubleArrow) }
+                    if [.rectangle,.oval,.move].contains(workspace.activeTool) { Toggle("Remplissage",isOn:$workspace.shapeStyle.filled) }
+                }
+            }
         }
-    }
-
-    private var organize: some View {
-        Menu {
-            Button("Tourner de 90°", systemImage: "rotate.right") { workspace.rotate() }
-            Button("Déplacer avant", systemImage: "arrow.up") { workspace.movePage(by: -1) }.disabled(workspace.pageIndex == 0)
-            Button("Déplacer après", systemImage: "arrow.down") { workspace.movePage(by: 1) }
-                .disabled(workspace.pageIndex + 1 >= (workspace.document?.pageCount ?? 0))
-            Button("Ajouter un autre PDF", systemImage: "plus.rectangle.on.rectangle", action: merge)
-            Button("Supprimer la page", systemImage: "trash", role: .destructive, action: deletePage)
-                .disabled((workspace.document?.pageCount ?? 0) < 2)
-        } label: { Label("Organiser", systemImage: "square.stack.3d.up") }
     }
 }
 
@@ -91,11 +165,16 @@ extension CanvasTool {
         case .note: return "Touchez la page et écrivez votre note."
         case .signature: return "Touchez la page pour placer votre signature."
         case .pen: return "Dessinez sur la page avec le doigt ou le Pencil."
-        case .rectangle, .oval: return "Tracez la forme directement sur la page."
+        case .freeHighlighter: return "Tracez librement le marqueur sur la page."
+        case .rectangle, .oval, .line, .arrow: return "Tracez la forme directement sur la page."
         case .move: return "Déplacez une annotation. Tirez la poignée d’une zone de texte pour la redimensionner."
-        case .erase: return "Touchez une annotation pour la supprimer."
-        case .replaceText: return "Sélectionnez une ligne pour remplacer son contenu PDF."
+        case .erase: return "Glissez la gomme sur les traits."
+        case .replaceText: return "Touchez une ligne pour remplacer son contenu PDF."
         case .targetImage: return "Touchez l’image PDF à remplacer."
+        case .insertImage: return "Choisissez une image, puis touchez la page pour la placer."
+        case .link: return "Tracez la zone du lien."
+        case .redact: return "Tracez la zone à biffer."
+        case .date, .checkmark, .cross, .stamp: return "Touchez la page pour placer la marque."
         }
     }
 }

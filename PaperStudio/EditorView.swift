@@ -1,6 +1,7 @@
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
+import PhotosUI
 
 private struct SharedFile: Identifiable { let id = UUID(); let url: URL }
 private enum EditorSheet: String, Identifiable {
@@ -11,8 +12,16 @@ private enum EditorSheet: String, Identifiable {
 struct EditorView: View {
     @StateObject private var workspace: PDFWorkspace
     let onClose: () -> Void
-    @State private var showPages = true
-    @State private var dimBackground = false
+    @State private var showPages = false
+    @State private var showReading = false
+    @State private var pickingImage = false
+    @State private var photo: PhotosPickerItem?
+    @State private var linkPrompt = false
+    @State private var linkURL = "https://"
+    @State private var redactPrompt = false
+    @State private var nativeTask: Task<Void,Never>?
+    @State private var idleWasDisabled = false
+    @StateObject private var speaker = ReadingSpeaker()
     @State private var search = ""
     @State private var sheet: EditorSheet?
     @State private var password = ""
@@ -46,8 +55,8 @@ struct EditorView: View {
                 tools
                 Divider()
                 HStack(spacing: 0) {
-                    if showPages { pages.frame(width: 140); Divider() }
-                    PDFCanvas(workspace: workspace, nightMode: dimBackground)
+                    if showPages { DocumentPanelView(workspace:workspace,pages:pages).frame(width:workspace.panel == .pages ? 160 : 280); Divider() }
+                    PDFCanvas(workspace: workspace, nightMode: false).modifier(ReadingThemeModifier(settings:workspace.reading))
                 }
                 footer
             } else {
@@ -57,7 +66,7 @@ struct EditorView: View {
                 Spacer()
             }
         }
-        .disabled(exportProgress != nil || nativeEditing)
+        .disabled(exportProgress != nil || nativeEditing || workspace.processingDocument)
         .overlay {
             if let exportProgress {
                 VStack(spacing: 16) {
@@ -65,6 +74,7 @@ struct EditorView: View {
                     Button("Annuler") { exportTask?.cancel() }
                 }.padding(32).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             }
+            if nativeEditing || workspace.processingDocument { ProgressView("Modification du PDF…").padding(28).background(.regularMaterial,in:RoundedRectangle(cornerRadius:16)) }
         }
         .sheet(item: $sheet, onDismiss: {
             if let pendingShare { sharedFile = SharedFile(url: pendingShare); self.pendingShare = nil }
@@ -73,6 +83,42 @@ struct EditorView: View {
             if workspace.activeTool == .signature && workspace.signatureStrokes.isEmpty { workspace.activeTool = .read }
         }) { kind in sheetContent(kind) }
         .sheet(item: $sharedFile) { ActivitySheet(url: $0.url) }
+        .photosPicker(isPresented:$pickingImage,selection:$photo,matching:.images)
+        .onChange(of:photo) { item in
+            guard let item else { return }
+            workspace.processingDocument = true
+            Task { @MainActor in
+                defer { photo = nil; workspace.processingDocument = false }
+                do {
+                    guard let source = try await item.loadTransferable(type:Data.self) else { throw StudioError.invalidPDF }
+                    let normalized = await Task.detached(priority:.userInitiated) { () -> Data? in
+                        guard let image = UIImage(data:source) else { return nil }
+                        let ratio = min(1,2400/max(image.size.width,image.size.height))
+                        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+                        return UIGraphicsImageRenderer(size:CGSize(width:image.size.width*ratio,height:image.size.height*ratio),format:format).image { _ in
+                            image.draw(in:CGRect(x:0,y:0,width:image.size.width*ratio,height:image.size.height*ratio))
+                        }.pngData()
+                    }.value
+                    guard let normalized, let image = UIImage(data:normalized) else { throw StudioError.invalidPDF }
+                    workspace.insertionImage = normalized; workspace.insertionAspect = image.size.width/image.size.height
+                    if let region = workspace.regionTarget, workspace.activeTool == .insertImage { processRegion(region,operation:.insertImage) }
+                } catch { workspace.error = error.localizedDescription }
+            }
+        }
+        .alert("Lien",isPresented:$linkPrompt) {
+            TextField("Adresse du lien",text:$linkURL).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Button("Ajouter") {
+                if let region = workspace.regionTarget, let url = URL(string:linkURL), ["https","http","mailto"].contains(url.scheme?.lowercased() ?? "") {
+                    workspace.addLink(on:region.page,bounds:region.bounds,url:url)
+                } else { workspace.error = "Adresse de lien invalide." }
+                workspace.regionTarget = nil
+            }
+            Button("Annuler",role:.cancel) { workspace.regionTarget = nil }
+        }
+        .confirmationDialog("Supprimer le contenu de cette zone ?",isPresented:$redactPrompt,titleVisibility:.visible) {
+            Button("Biffer le contenu",role:.destructive) { if let region = workspace.regionTarget { processRegion(region,operation:.redact) } }
+            Button("Annuler",role:.cancel) { workspace.regionTarget = nil }
+        } message: { Text("Le texte, les images et les traits de la zone seront retirés du PDF. Enregistrez pour conserver le résultat.") }
         .fileImporter(isPresented: $merging, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
             do { workspace.merge(try result.get()) } catch { workspace.error = error.localizedDescription }
         }
@@ -93,7 +139,20 @@ struct EditorView: View {
                 if workspace.dirty || workspace.hasFormFields { workspace.save() }
             }
         }
-        .onDisappear { exportTask?.cancel() }
+        .onAppear { idleWasDisabled = UIApplication.shared.isIdleTimerDisabled }
+        .onDisappear { exportTask?.cancel(); nativeTask?.cancel(); speaker.stop(); UIApplication.shared.isIdleTimerDisabled = idleWasDisabled }
+        .onChange(of:workspace.reading.keepAwake) { UIApplication.shared.isIdleTimerDisabled = $0 }
+        .onChange(of:workspace.regionTarget?.id) { id in
+            guard id != nil, let region = workspace.regionTarget else { return }
+            switch workspace.activeTool {
+            case .link: linkURL = "https://"; linkPrompt = true
+            case .redact: redactPrompt = true
+            case .insertImage:
+                if workspace.insertionImage == nil { pickingImage = true }
+                else { processRegion(region,operation:.insertImage) }
+            default: break
+            }
+        }
         .onChange(of: workspace.textTarget?.id) { id in if id != nil { sheet = .contentText } }
         .onChange(of: workspace.imageTarget?.id) { id in
             if id != nil { sheet = .contentImage }
@@ -110,6 +169,12 @@ struct EditorView: View {
             Spacer()
             Text(workspace.url.deletingPathExtension().lastPathComponent).font(.headline).lineLimit(1)
             Spacer()
+            Button { showReading = true } label: { Image(systemName:"textformat.size") }.accessibilityLabel("Paramètres d’affichage")
+                .popover(isPresented:$showReading) { ReadingControls(workspace:workspace,speaker:speaker).presentationCompactAdaptation(.popover) }
+            Button {
+                if showPages && workspace.panel == .annotations { showPages = false }
+                else { workspace.panel = .annotations; showPages = true }
+            } label: { Image(systemName:"book") }.accessibilityLabel("Annotations")
             Button { workspace.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                 .disabled(!workspace.canUndo).accessibilityLabel("Annuler la dernière modification")
                 .keyboardShortcut("z", modifiers: .command)
@@ -150,7 +215,7 @@ struct EditorView: View {
                 if let annotation = workspace.selectedAnnotation, let view = workspace.pdfView as? DrawingPDFView {
                     view.beginTextEntry(annotation: annotation)
                 }
-            })
+            }, pickImage: { pickingImage = true }, exportAction:runExport)
     }
 
     private var pages: some View {
@@ -205,7 +270,7 @@ struct EditorView: View {
                     }
                 }
             } label: { Text("\(workspace.searchResults.count) résultats").font(.caption) }
-            Button { dimBackground.toggle() } label: { Image(systemName: dimBackground ? "sun.max" : "moon") }
+            Button { workspace.reading.theme = workspace.reading.theme == .night ? .day : .night } label: { Image(systemName: workspace.reading.theme == .night ? "sun.max" : "moon") }
                 .accessibilityLabel("Assombrir le fond de lecture")
         }.padding(12).background(.bar)
     }
@@ -278,6 +343,36 @@ struct EditorView: View {
     }
 
     private func share(_ url: URL?) { if let url { sharedFile = SharedFile(url: url) } }
+
+    private func processRegion(_ region: AnnotationPlacement, operation: MuPDFEngine.Operation) {
+        guard let document = workspace.document, region.page.document === document else { return }
+        let index = document.index(for:region.page), image = workspace.insertionImage ?? Data()
+        workspace.regionTarget = nil
+        nativeEditing = true
+        nativeTask = Task { @MainActor in
+            defer { nativeEditing = false; nativeTask = nil }
+            do {
+                await Task.yield()
+                try await workspace.replaceContent(operation:operation,page:index,region:region.bounds,image:image)
+            } catch is CancellationError {} catch { workspace.error = error.localizedDescription }
+        }
+    }
+
+    private func runExport(_ action: EditorExportAction) {
+        workspace.finishInteraction()
+        switch action {
+        case .share: share(workspace.export())
+        case .word: exportWord()
+        case .text: share(workspace.exportText())
+        case .image: share(workspace.exportImage())
+        case .searchable: exportSearchablePDF()
+        case .optimize: sheet = .optimize
+        case .protect: password = ""; sheet = .password
+        case .printDocument:
+            guard let data = workspace.document?.dataRepresentation() else { return }
+            let controller = UIPrintInteractionController.shared; controller.printingItem = data; controller.present(animated:true)
+        }
+    }
 
     private func exportSearchablePDF() {
         guard let document = workspace.document else { return }

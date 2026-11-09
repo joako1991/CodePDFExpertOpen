@@ -21,12 +21,22 @@ Ces changements sont sur `main` ; le tag `v0.1` conserve la version publiée. Su
 
 Pour vérifier sur iPad : annoter un PDF long avec le volet des pages ouvert, dessiner rapidement, déplacer/redimensionner une zone de texte, annuler/rétablir, puis enregistrer et rouvrir. La validation sur simulateur ne mesure pas la latence d’un iPad physique.
 
+### Comportements de la vidéo de référence
+
+L’éditeur reprend les modes **Annoter / Modifier le PDF / Remplir et signer / Exporter**. Les palettes de couleurs restent visibles ; toucher à nouveau l’outil ouvre ses réglages. Les formes partagent couleur/épaisseur/opacité, et une forme sélectionnée se met à jour pendant le réglage. Les panneaux de bibliothèque et de pages sont repliés pendant la lecture.
+
+Le stylo accepte la pression et les points coalescés du Pencil ; le marqueur libre permet les traits diagonaux, indépendamment du surlignage de texte. La gomme a des modes trait entier et partiel, avec annulation du geste complet. Le texte propose Helvetica 12 pt par défaut, une barre de police/taille/graisse/couleur et l’écriture native Scribble. Le mode Remplir et signer ajoute coches, croix, dates et tampons par touches répétées.
+
+Les fonctions locales de remplacement du texte/des images, insertion d’image, liens, biffure réelle, signature manuscrite, DOCX et OCR ne comportent aucun abonnement. **Le remplacement de texte reste limité à une ligne avec une police de substitution ; Excel/PowerPoint et l’IA ne sont pas implémentés.**
+
+Le détail des observations, des écrans Premium et des limites se trouve dans [la comparaison de la vidéo](docs/REFERENCE_BEHAVIOR.md).
+
 ## Compiler sur macOS
 
 Il faut **Xcode 16 ou ultérieur**, ses outils en ligne de commande, Git, Python 3 et un accès Internet pour récupérer les sources du moteur. Installer un runtime iOS dans Xcode pour les tests sur simulateur. Utiliser un chemin de checkout **sans espaces** (limitation des Makefiles MuPDF).
 
 ```bash
-git clone --branch v0.1 https://github.com/joako1991/CodePDFExpertOpen.git
+git clone https://github.com/joako1991/CodePDFExpertOpen.git
 cd CodePDFExpertOpen
 bash scripts/fetch-mupdf.sh
 open PaperStudio.xcodeproj

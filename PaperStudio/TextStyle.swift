@@ -3,10 +3,10 @@ import SwiftUI
 import PDFKit
 
 enum TextFamily: String, CaseIterable, Identifiable {
-    case system, serif, monospaced
+    case system, helvetica, serif, monospaced
     var id: String { rawValue }
     var title: String {
-        switch self { case .system: return "Sans empattement"; case .serif: return "Avec empattement"; case .monospaced: return "Monospace" }
+        switch self { case .system: return "Sans empattement"; case .helvetica: return "Helvetica"; case .serif: return "Avec empattement"; case .monospaced: return "Monospace" }
     }
 }
 
@@ -22,20 +22,27 @@ enum TextWeight: String, CaseIterable, Identifiable {
 }
 
 struct TextStyle: Equatable {
-    var family: TextFamily = .system
-    var size: Double = 16
+    var family: TextFamily = .helvetica
+    var size: Double = 12
     var weight: TextWeight = .regular
     var color: Color = .black
-    var availableWeights: [TextWeight] { family == .serif ? [.regular, .bold] : TextWeight.allCases }
+    var availableWeights: [TextWeight] { family == .serif ? [.regular, .bold] : (family == .helvetica ? [.regular,.medium,.bold] : TextWeight.allCases) }
     var font: UIFont {
         switch family {
         case .system: return UIFont.systemFont(ofSize: CGFloat(size), weight: weight.uiWeight)
         case .monospaced: return UIFont.monospacedSystemFont(ofSize: CGFloat(size), weight: weight.uiWeight)
+        case .helvetica:
+            let name = weight == .regular ? "HelveticaNeue" : (weight == .medium ? "HelveticaNeue-Medium" : "HelveticaNeue-Bold")
+            return UIFont(name:name,size:CGFloat(size)) ?? UIFont.systemFont(ofSize:CGFloat(size),weight:weight.uiWeight)
         case .serif:
             // Explicit installed faces preserve bold in both UIKit and PDFKit appearance streams.
             return UIFont(name: weight == .regular ? "Georgia" : "Georgia-Bold", size: CGFloat(size)) ??
                 UIFont.systemFont(ofSize: CGFloat(size), weight: weight == .regular ? .regular : .bold)
         }
+    }
+    mutating func useFamily(_ family: TextFamily) {
+        self.family = family
+        if !availableWeights.contains(weight) { weight = weight == .medium ? .regular : .bold }
     }
 }
 
@@ -51,10 +58,7 @@ struct TextStyleControls: View {
     private var familySelection: Binding<TextFamily> {
         Binding(get: { style.family }, set: { family in
             var updated = style
-            updated.family = family
-            if !updated.availableWeights.contains(updated.weight) {
-                updated.weight = updated.weight == .medium ? .regular : .bold
-            }
+            updated.useFamily(family)
             style = updated
         })
     }

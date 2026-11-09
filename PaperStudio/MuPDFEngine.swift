@@ -4,7 +4,7 @@ import CoreGraphics
 
 enum MuPDFEngine {
     static var version: String { String(cString: ps_pdf_version()) }
-    enum Operation: Int32, Sendable { case replaceText = 1, replaceImage = 2, docx = 3 }
+    enum Operation: Int32, Sendable { case replaceText = 1, replaceImage = 2, docx = 3, insertImage = 4, redact = 5 }
     struct EngineError: LocalizedError {
         let message: String
         var errorDescription: String? { message }

@@ -168,6 +168,47 @@ static void replace_image(fz_context *ctx, pdf_document *doc, pdf_page *page,
     fz_catch(ctx) { fz_rethrow(ctx); }
 }
 
+static void region_operation(fz_context *ctx, pdf_page *page, PSRect region,
+    int operation, const unsigned char *data, size_t length)
+{
+    pdf_annot *annot = NULL;
+    fz_buffer *buffer = NULL;
+    fz_image *image = NULL;
+    fz_var(annot); fz_var(buffer); fz_var(image);
+    fz_try(ctx)
+    {
+        fz_rect ignored; fz_matrix ctm;
+        pdf_page_transform(ctx, page, &ignored, &ctm);
+        fz_rect raw = fz_make_rect(region.x0, region.y0, region.x1, region.y1);
+        fz_rect bounds = fz_intersect_rect(fz_transform_rect(raw, ctm), pdf_bound_page(ctx,page,FZ_CROP_BOX));
+        if (fz_is_empty_rect(bounds) || bounds.x1-bounds.x0 < 1 || bounds.y1-bounds.y0 < 1)
+            fz_throw(ctx,FZ_ERROR_ARGUMENT,"Sélectionnez une zone valide sur la page.");
+        if (operation == PS_INSERT_IMAGE)
+        {
+            if (!data || !length) fz_throw(ctx,FZ_ERROR_ARGUMENT,"Choisissez une image.");
+            buffer = fz_new_buffer_from_shared_data(ctx,data,length);
+            image = fz_new_image_from_buffer(ctx,buffer);
+            annot = pdf_create_annot(ctx,page,PDF_ANNOT_STAMP);
+            pdf_set_annot_rect(ctx,annot,bounds);
+            pdf_set_annot_stamp_image(ctx,annot,image);
+            pdf_update_annot(ctx,annot);
+        }
+        else
+        {
+            annot = pdf_create_annot(ctx,page,PDF_ANNOT_REDACT);
+            pdf_set_annot_rect(ctx,annot,bounds);
+            pdf_redact_options options = {0};
+            options.black_boxes = 1;
+            options.image_method = PDF_REDACT_IMAGE_PIXELS;
+            options.line_art = PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED;
+            options.text = PDF_REDACT_TEXT_REMOVE;
+            pdf_apply_redaction(ctx,annot,&options);
+        }
+    }
+    fz_always(ctx) { pdf_drop_annot(ctx,annot); fz_drop_image(ctx,image); fz_drop_buffer(ctx,buffer); }
+    fz_catch(ctx) { fz_rethrow(ctx); }
+}
+
 int ps_pdf_process(const unsigned char *input, size_t input_length,
     const char *password, int operation, int page_index, PSRect region,
     const char *replacement_text, float font_size,
@@ -193,7 +234,7 @@ int ps_pdf_process(const unsigned char *input, size_t input_length,
         doc = pdf_open_document_with_stream(ctx, input_stream);
         if (pdf_needs_password(ctx, doc) && !pdf_authenticate_password(ctx, doc, password ? password : ""))
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "Mot de passe PDF incorrect ou absent.");
-        if (operation < PS_REPLACE_TEXT || operation > PS_EXPORT_DOCX)
+        if (operation < PS_REPLACE_TEXT || operation > PS_REDACT)
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "Opération PDF inconnue.");
         if (!pdf_has_permission(ctx, doc, operation == PS_EXPORT_DOCX ? FZ_PERMISSION_COPY : FZ_PERMISSION_EDIT))
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "Les permissions de ce PDF ne permettent pas cette opération.");
@@ -212,7 +253,8 @@ int ps_pdf_process(const unsigned char *input, size_t input_length,
             page = pdf_load_page(ctx, doc, page_index);
             if (operation == PS_REPLACE_TEXT)
                 replace_text(ctx, doc, page, region, replacement_text, font_size);
-            else replace_image(ctx, doc, page, region, replacement_image, image_length);
+            else if (operation == PS_REPLACE_IMAGE) replace_image(ctx, doc, page, region, replacement_image, image_length);
+            else region_operation(ctx,page,region,operation,replacement_image,image_length);
             output = fz_new_output_with_buffer(ctx, output_buffer);
             pdf_write_options options = pdf_default_write_options;
             options.do_incremental = 0;

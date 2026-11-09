@@ -17,6 +17,7 @@ struct LibraryView: View {
     @State private var renaming: LibraryDocument?
     @State private var newName = ""
     @State private var showLegal = false
+    @State private var columns: NavigationSplitViewVisibility = .all
     @AppStorage("appLanguage") private var language: AppLanguage = .preferred
     private var filtered: [LibraryDocument] {
         library.documents.filter {
@@ -26,7 +27,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility:$columns) {
             ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Label("Paper Studio", systemImage: "doc.richtext")
@@ -72,6 +73,7 @@ struct LibraryView: View {
                 libraryContent
             }
         }
+        .onChange(of:selected) { url in columns = url == nil ? .all : .detailOnly }
         .sheet(isPresented: $showLegal) { LegalView() }
         .sheet(isPresented: $scanning) {
             DocumentScanner { result in

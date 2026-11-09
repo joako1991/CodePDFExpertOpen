@@ -113,6 +113,37 @@ class NativeEngineTests(unittest.TestCase):
     def test_missing_image_target_fails(self):
         self.invoke(op=2, region=(400, 400, 400, 400), image=self.replacement_image(), succeed=False)
 
+    def test_inserted_image_is_a_visible_stamp_and_preserves_text(self):
+        self.invoke(op=4, region=(350, 400, 430, 480), image=self.replacement_image())
+        self.assertEqual(self.render_pixel(1,390,402),(0,0,255))
+        self.assertIn("ORIGINAL_SECRET",self.extracted())
+        self.assertEqual(self.render_pixel(2,390,402),(255,255,255))
+
+    def test_image_insertion_rejects_empty_image_or_rectangle(self):
+        self.invoke(op=4,region=(350,400,430,480),succeed=False)
+        self.invoke(op=4,region=(0,0,0,0),image=self.replacement_image(),succeed=False)
+
+    def test_redaction_removes_text_from_pdf_content_and_draws_black(self):
+        self.invoke(op=5)
+        self.assertNotIn("ORIGINAL_SECRET",self.extracted())
+        self.assertIn("KEEP_LINE",self.extracted())
+        self.assertEqual(self.render_pixel(1,100,95),(0,0,0))
+        clean=self.folder / "decompressed.pdf"
+        run(mutool,"clean","-d",self.target,clean)
+        self.assertNotIn(b"ORIGINAL_SECRET",clean.read_bytes())
+
+    def test_redaction_handles_rotated_cropped_page(self):
+        pdf_fixture(self.original,rotated=True)
+        self.invoke(op=5)
+        self.assertNotIn("ORIGINAL_SECRET",self.extracted())
+        self.assertIn("KEEP_LINE",self.extracted())
+
+    def test_redaction_of_image_does_not_change_another_occurrence(self):
+        self.invoke(op=5,region=(50,540,130,620))
+        self.assertEqual(self.render_pixel(1,90,262),(0,0,0))
+        self.assertEqual(self.render_pixel(1,190,262),(255,0,0))
+        self.assertEqual(self.render_pixel(2,90,262),(255,0,0))
+
     def test_docx_is_valid_and_contains_text(self):
         self.invoke(op=3)
         with zipfile.ZipFile(self.target) as archive:
@@ -150,6 +181,6 @@ suite = unittest.defaultTestLoader.loadTestsFromTestCase(NativeEngineTests)
 result = unittest.TextTestRunner(verbosity=2).run(suite)
 report = {"at": datetime.now(timezone.utc).isoformat(), "tests_run": result.testsRun,
           "failures": len(result.failures), "errors": len(result.errors), "skipped": len(result.skipped),
-          "scope": "Production C bridge on Linux, not Xcode/iPadOS", "success": result.wasSuccessful() and result.testsRun >= 16}
+          "scope": "Production C bridge on Linux, not Xcode/iPadOS", "success": result.wasSuccessful() and result.testsRun >= 21}
 (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 sys.exit(0 if report["success"] else 1)

@@ -3,7 +3,7 @@ import PDFKit
 import Vision
 
 enum CanvasTool: String, CaseIterable, Identifiable {
-    case read, highlight, underline, strikeOut, text, note, signature, pen, rectangle, oval, move, erase, replaceText, targetImage
+    case read, highlight, underline, strikeOut, text, note, signature, pen, freeHighlighter, rectangle, oval, line, arrow, move, erase, replaceText, targetImage, insertImage, link, redact, date, checkmark, cross, stamp
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -15,12 +15,22 @@ enum CanvasTool: String, CaseIterable, Identifiable {
         case .note: return "Note"
         case .signature: return "Signer"
         case .pen: return "Dessiner"
+        case .freeHighlighter: return "Marqueur libre"
         case .rectangle: return "Rectangle"
         case .oval: return "Ellipse"
+        case .line: return "Ligne"
+        case .arrow: return "Flèche"
         case .move: return "Déplacer"
         case .erase: return "Effacer"
         case .replaceText: return "Remplacer le texte"
         case .targetImage: return "Remplacer une image"
+        case .insertImage: return "Insérer une image"
+        case .link: return "Lien"
+        case .redact: return "Biffer"
+        case .date: return "Date"
+        case .checkmark: return "Coche"
+        case .cross: return "Croix"
+        case .stamp: return "Tampon"
         }
     }
     var symbol: String {
@@ -33,12 +43,22 @@ enum CanvasTool: String, CaseIterable, Identifiable {
         case .note: return "note.text.badge.plus"
         case .signature: return "signature"
         case .pen: return "pencil.tip"
+        case .freeHighlighter: return "highlighter"
         case .rectangle: return "rectangle"
         case .oval: return "oval"
+        case .line: return "line.diagonal"
+        case .arrow: return "arrow.up.right"
         case .move: return "arrow.up.left.and.arrow.down.right"
         case .erase: return "eraser"
         case .replaceText: return "text.cursor"
         case .targetImage: return "photo.badge.arrow.down"
+        case .insertImage: return "photo.badge.plus"
+        case .link: return "link"
+        case .redact: return "rectangle.fill"
+        case .date: return "calendar"
+        case .checkmark: return "checkmark"
+        case .cross: return "xmark"
+        case .stamp: return "seal"
         }
     }
     var markup: PDFAnnotationSubtype? {
@@ -46,7 +66,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
     }
     var selectsText: Bool { markup != nil || self == .replaceText }
     var defaultColor: Color {
-        switch self { case .highlight: return .yellow; case .underline: return .blue; case .strikeOut: return .red; case .text, .signature: return .black; default: return .indigo }
+        switch self { case .highlight, .freeHighlighter: return .yellow; case .underline: return .blue; case .strikeOut, .rectangle, .oval, .line, .arrow: return .red; case .text, .pen, .signature, .date, .checkmark, .cross: return .black; case .stamp: return .red; default: return .indigo }
     }
 }
 
@@ -75,12 +95,17 @@ final class PDFWorkspace: ObservableObject {
     @Published var recognizing = false
     @Published var recognizedText = ""
     @Published var searchResults: [PDFSelection] = []
+    @Published var editorMode: EditorMode = .annotate {
+        didSet { if oldValue != editorMode { finishInteraction(); activeTool = .read; selectedAnnotation = nil } }
+    }
     @Published var activeTool: CanvasTool = .read {
         didSet {
             guard oldValue != activeTool else { return }
             (pdfView as? DrawingPDFView)?.finishTextEntry()
             switchingTool = true
-            inkColor = toolColors[activeTool] ?? activeTool.defaultColor
+            inkColor = toolColors[styleKey] ?? activeTool.defaultColor
+            lineWidth = toolWidths[styleKey] ?? activeTool.defaultWidth
+            opacity = toolOpacities[styleKey] ?? ([.highlight,.freeHighlighter].contains(activeTool) ? 0.4 : 1)
             switchingTool = false
             pdfView?.clearSelection()
             selectedAnnotation = nil
@@ -88,18 +113,44 @@ final class PDFWorkspace: ObservableObject {
         }
     }
     @Published var inkColor: Color = .indigo {
-        didSet { if !switchingTool { toolColors[activeTool] = inkColor } }
+        didSet { if !switchingTool { toolColors[styleKey] = inkColor } }
     }
     private var switchingTool = false
     private var toolColors: [CanvasTool: Color] = [:]
+    private var toolWidths: [CanvasTool: CGFloat] = [:]
+    private var toolOpacities: [CanvasTool: Double] = [:]
+    private var styleKey: CanvasTool { activeTool.isShape ? .rectangle : activeTool }
+    private var readingTextStyle = false
     @Published var textStyle = TextStyle() {
-        didSet { (pdfView as? DrawingPDFView)?.updateTextEntryStyle() }
+        didSet {
+            let view = pdfView as? DrawingPDFView
+            view?.updateTextEntryStyle()
+            if !readingTextStyle, view?.isEditingText != true, activeTool == .text, selectedAnnotation?.type == "FreeText" {
+                beginAppearanceEditing(); previewSelectedAppearance(); finishAppearanceEditing()
+            }
+        }
     }
     @Published var placement: AnnotationPlacement?
     @Published var textTarget: ContentTextTarget?
     var signatureStrokes: [[CGPoint]] = []
     var signatureSize: CGSize = .zero
-    @Published var lineWidth: CGFloat = 2
+    @Published var lineWidth: CGFloat = 2 { didSet { if !switchingTool { toolWidths[styleKey] = lineWidth } } }
+    @Published var opacity: Double = 1 { didSet { if !switchingTool { toolOpacities[styleKey] = opacity } } }
+    @Published var shapeStyle = AnnotationShapeStyle()
+    @Published var eraserMode: EraserMode = .whole
+    @Published var eraserSize: CGFloat = 14
+    @Published var pressureSensitive = true
+    @Published var convertHandwriting = false { didSet { (pdfView as? DrawingPDFView)?.configureTool() } }
+    @Published var reading = ReadingSettings()
+    @Published var panel: DocumentPanel = .pages
+    @Published var stampText = L10n.tr("APPROUVÉ")
+    @Published var stampDate = Date()
+    @Published var regionTarget: AnnotationPlacement?
+    var insertionImage: Data?
+    var insertionAspect: CGFloat = 1
+    @Published var processingDocument = false
+    private var appearanceBefore: [AnnotationAppearance] = []
+    private var appearanceWidth: CGFloat = 1
     @Published var selectedAnnotation: PDFAnnotation?
     @Published var bookmarks: Set<Int> = []
     @Published var imageTarget: ContentImageTarget?
@@ -214,13 +265,85 @@ final class PDFWorkspace: ObservableObject {
         changed(edit.pages, layout: edit.layout)
     }
 
-    private func addAnnotations(_ additions: [(PDFPage, PDFAnnotation)], cost: Int = 1024) {
+    func addAnnotations(_ additions: [(PDFPage, PDFAnnotation)], cost: Int = 1024) {
+        guard additions.allSatisfy({ $0.0.document === document }) else { return }
         guard !additions.isEmpty else { return }
         commit(pages: additions.map { $0.0 }, cost: max(cost, additions.count * 1024), undo: {
             for (page, annotation) in additions { page.removeAnnotation(annotation) }
         }, redo: {
             for (page, annotation) in additions { page.addAnnotation(annotation) }
         })
+    }
+
+    func replacePageAnnotations(on page: PDFPage, before: [PDFAnnotation], after: [PDFAnnotation]) {
+        guard page.document === document else { return }
+        let oldIDs = before.map(ObjectIdentifier.init), newIDs = after.map(ObjectIdentifier.init)
+        guard oldIDs != newIDs else { return }
+        func install(_ annotations: [PDFAnnotation]) {
+            for annotation in page.annotations { page.removeAnnotation(annotation) }
+            for annotation in annotations { page.addAnnotation(annotation) }
+        }
+        commit(pages: [page], cost: (before.count+after.count)*1024, undo: { install(before) }, redo: { install(after) })
+        selectedAnnotation = nil
+    }
+
+    func beginAppearanceEditing() {
+        finishAppearanceEditing()
+        if let annotation = selectedAnnotation, activeTool.isShape || activeTool == .move || activeTool == .text {
+            appearanceBefore = groupedAnnotations(annotation).map(AnnotationAppearance.init)
+            appearanceWidth = max(0.01,lineWidth)
+        }
+    }
+
+    func previewSelectedAppearance() {
+        guard let annotation = selectedAnnotation, let page = annotation.page, page.document === document,
+              activeTool.isShape || activeTool == .move || activeTool == .text else { return }
+        for annotation in groupedAnnotations(annotation) {
+        if annotation.type == "FreeText" {
+            guard (pdfView as? DrawingPDFView)?.isEditingText != true else { return }
+            annotation.font = textStyle.font; annotation.fontColor = UIColor(textStyle.color)
+        } else {
+            annotation.color = UIColor(inkColor).withAlphaComponent(opacity)
+            if annotation.type == "Square" || annotation.type == "Circle" { annotation.interiorColor = shapeStyle.filled ? annotation.color : .clear }
+            let border = PDFBorder()
+            if annotation.type == "Ink", let before = appearanceBefore.first(where: { $0.annotation === annotation }) {
+                border.lineWidth = (before.border?.lineWidth ?? lineWidth)*lineWidth/appearanceWidth
+            } else { border.lineWidth = lineWidth }
+            border.style = shapeStyle.pattern == .solid ? .solid : .dashed
+            border.dashPattern = shapeStyle.pattern.dash.map { NSNumber(value:Double($0)) }; annotation.border = border
+            if annotation.type == "Line", annotation.endLineStyle == .closedArrow {
+                annotation.startLineStyle = shapeStyle.doubleArrow ? .closedArrow : .none
+                annotation.interiorColor = annotation.color
+            }
+        }
+        }
+        pdfView?.annotationsChanged(on:page)
+    }
+
+    func finishAppearanceEditing() {
+        let before = appearanceBefore
+        appearanceBefore = []
+        let after = before.map { AnnotationAppearance($0.annotation) }
+        guard before != after, let page = before.first?.annotation.page, page.document === document else { return }
+        for state in before { state.restore() }
+        commit(pages:[page],undo:{for state in before { state.restore() }},redo:{for state in after { state.restore() }})
+    }
+
+    func selectAnnotation(_ annotation: PDFAnnotation) {
+        finishInteraction()
+        guard let page = annotation.page, page.document === document else { return }
+        if !editorMode.tools.contains(.move) { editorMode = .annotate }
+        activeTool = .move; selectedAnnotation = annotation
+        inkColor = Color(annotation.color.withAlphaComponent(1)); opacity = Double(annotation.color.cgColor.alpha)
+        lineWidth = annotation.border?.lineWidth ?? 2
+        if let name = annotation.value(forAnnotationKey:.name) as? String, name.hasPrefix("PaperStudio-"),
+           let band = name.split(separator:"-").last.flatMap({Int($0)}), band > 0 {
+            lineWidth = lineWidth*8/CGFloat(band)
+        }
+        shapeStyle.pattern = annotation.border?.style == .dashed ? .dashed : .solid
+        shapeStyle.filled = (annotation.interiorColor?.cgColor.alpha ?? 0) > 0
+        if annotation.type == "FreeText" { readTextStyle(from:annotation) }
+        pdfView?.go(to:annotation.bounds.insetBy(dx:-20,dy:-20),on:page)
     }
 
     func toggleBookmark() {
@@ -329,6 +452,7 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func finishInteraction() {
+        finishAppearanceEditing()
         (pdfView as? DrawingPDFView)?.finishTextEntry()
         (pdfView as? DrawingPDFView)?.cancelToolGesture()
     }
@@ -354,7 +478,7 @@ final class PDFWorkspace: ObservableObject {
     func applyMarkup(_ selection: PDFSelection, type: PDFAnnotationSubtype) {
         guard !(selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         var additions: [(PDFPage, CGRect)] = []
-        let color = UIColor(inkColor).withAlphaComponent(type == .highlight ? 0.4 : 1)
+        let color = UIColor(inkColor).withAlphaComponent(opacity)
         for line in selection.selectionsByLine() {
             for page in line.pages {
                 guard page.document === document else { continue }
@@ -409,10 +533,12 @@ final class PDFWorkspace: ObservableObject {
     }
 
     func readTextStyle(from annotation: PDFAnnotation) {
+        readingTextStyle = true
+        defer { readingTextStyle = false }
         guard let font = annotation.font else { return }
         textStyle.size = Double(font.pointSize)
         let name = font.familyName.lowercased()
-        textStyle.family = font.fontDescriptor.symbolicTraits.contains(.traitMonoSpace) ? .monospaced :
+        textStyle.family = name.contains("helvetica") ? .helvetica : font.fontDescriptor.symbolicTraits.contains(.traitMonoSpace) ? .monospaced :
             (name.contains("serif") || name.contains("newyork") || name.contains("times") || name.contains("georgia") ? .serif : .system)
         let traits = font.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any]
         let weight = (traits?[.weight] as? NSNumber)?.doubleValue ?? 0
@@ -465,7 +591,11 @@ final class PDFWorkspace: ObservableObject {
     func moveAnnotation(_ annotation: PDFAnnotation, to bounds: CGRect) {
         guard let page = annotation.page, page.document === document, annotation.bounds != bounds else { return }
         let before = annotation.bounds
-        commit(pages: [page], undo: { annotation.bounds = before }, redo: { annotation.bounds = bounds })
+        let group = groupedAnnotations(annotation).map { ($0,$0.bounds) }
+        let dx = bounds.minX-before.minX, dy = bounds.minY-before.minY
+        commit(pages: [page], undo: { for (item,rect) in group { item.bounds = rect } }, redo: {
+            for (item,rect) in group { item.bounds = item === annotation ? bounds : rect.offsetBy(dx:dx,dy:dy) }
+        })
         selectedAnnotation = annotation
     }
 
@@ -486,6 +616,12 @@ final class PDFWorkspace: ObservableObject {
 
     func removeAnnotation(_ annotation: PDFAnnotation) {
         guard annotation.type != "Widget", let page = annotation.page, page.document === document else { return }
+        let group = groupedAnnotations(annotation)
+        if group.count > 1 {
+            let ids = Set(group.map(ObjectIdentifier.init))
+            replacePageAnnotations(on:page,before:page.annotations,after:page.annotations.filter { !ids.contains(ObjectIdentifier($0)) })
+            return
+        }
         // Preserve stacking order when undoing deletion, without copying page contents.
         let following = Array(page.annotations.drop(while: { $0 !== annotation }).dropFirst())
         commit(pages: [page], undo: {

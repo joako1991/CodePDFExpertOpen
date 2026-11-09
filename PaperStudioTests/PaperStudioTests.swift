@@ -458,7 +458,7 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(workspace.page?.annotations.first?.bounds.width, 200)
         workspace.undo()
         XCTAssertEqual(workspace.page?.annotations.first?.contents, "Original")
-        XCTAssertEqual(workspace.page?.annotations.first?.font?.pointSize, 16)
+        XCTAssertEqual(workspace.page?.annotations.first?.font?.pointSize, 12)
     }
 
     func testSignatureUsesChosenLocationInsteadOfPageCentre() throws {
@@ -733,7 +733,7 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertEqual(annotation.font?.pointSize, 30)
         workspace.undo()
         XCTAssertEqual(annotation.contents, "Original")
-        XCTAssertEqual(annotation.font?.pointSize, 16)
+        XCTAssertEqual(annotation.font?.pointSize, 12)
     }
 
     func testCancellingInlineTextOrFinishingUnchangedTextDoesNotAddHistory() throws {
@@ -784,5 +784,275 @@ final class PaperStudioTests: XCTestCase {
             "The blue underline must be visible during the drag: line=\(line), frame=\(preview.frame), color=\(String(describing: preview.strokeColor)), order=\(view.layer.sublayers?.map { String(describing: type(of: $0)) } ?? [])")
         XCTAssertTrue(page.annotations.isEmpty, "This must be the live preview, before committing an annotation")
         view.cancelToolGesture()
+    }
+
+    func testDocumentModesExposeWorkingToolGroupsAndFinishInlineText() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome())
+        let view = canvas(workspace)
+        XCTAssertTrue(EditorMode.annotate.tools.contains(.freeHighlighter))
+        XCTAssertTrue(EditorMode.editPDF.tools.contains(.redact))
+        XCTAssertTrue(EditorMode.fillSign.tools.contains(.signature))
+        XCTAssertTrue(EditorMode.fillSign.tools.contains(.date))
+        XCTAssertTrue(EditorMode.export.tools.isEmpty)
+        workspace.activeTool = .text
+        view.beginTextEntry(on:try XCTUnwrap(workspace.page),bounds:CGRect(x:50,y:200,width:200,height:60))
+        let input = try XCTUnwrap(view.subviews.first { $0.accessibilityIdentifier == "inline-annotation-text" } as? UITextView)
+        input.text = "Switch modes"
+        workspace.editorMode = .fillSign
+        XCTAssertFalse(view.isEditingText)
+        XCTAssertEqual(workspace.activeTool,.read)
+        XCTAssertTrue(workspace.page?.annotations.contains { $0.contents == "Switch modes" } == true)
+    }
+
+    func testToolPresetsKeepMarkerSeparateAndShareShapeStyle() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome())
+        workspace.activeTool = .freeHighlighter
+        XCTAssertEqual(workspace.lineWidth,14)
+        XCTAssertEqual(workspace.opacity,0.4)
+        workspace.inkColor = .green; workspace.lineWidth = 20
+        workspace.activeTool = .pen
+        XCTAssertEqual(workspace.lineWidth,1.5)
+        XCTAssertEqual(workspace.opacity,1)
+        workspace.activeTool = .freeHighlighter
+        XCTAssertEqual(workspace.lineWidth,20)
+        XCTAssertEqual(UIColor(workspace.inkColor),UIColor(Color.green))
+        workspace.activeTool = .rectangle
+        workspace.inkColor = .red; workspace.lineWidth = 3; workspace.opacity = 0.75
+        workspace.activeTool = .arrow
+        XCTAssertEqual(workspace.lineWidth,3)
+        XCTAssertEqual(workspace.opacity,0.75)
+        XCTAssertEqual(UIColor(workspace.inkColor),UIColor(Color.red))
+    }
+
+    func testLineAndArrowPersistAsEditablePDFAnnotations() throws {
+        let url = try library.createWelcome(), workspace = PDFWorkspace(url:url)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .arrow
+        workspace.shapeStyle.doubleArrow = true
+        workspace.shapeStyle.pattern = .dashed
+        workspace.lineWidth = 3
+        let a = CGPoint(x:50,y:200), b = CGPoint(x:200,y:270)
+        workspace.addShape(on:page,from:a,to:b,tool:.arrow)
+        let arrow = try XCTUnwrap(workspace.selectedAnnotation)
+        XCTAssertEqual(arrow.type,"Line")
+        XCTAssertEqual(arrow.startPoint,CGPoint(x:a.x-arrow.bounds.minX,y:a.y-arrow.bounds.minY))
+        XCTAssertEqual(arrow.endPoint,CGPoint(x:b.x-arrow.bounds.minX,y:b.y-arrow.bounds.minY))
+        XCTAssertEqual(arrow.startLineStyle,.closedArrow)
+        XCTAssertEqual(arrow.endLineStyle,.closedArrow)
+        XCTAssertEqual(arrow.border?.style,.dashed)
+        XCTAssertTrue(workspace.save())
+        let restored = try XCTUnwrap(PDFDocument(url:url)?.page(at:0)?.annotations.first)
+        XCTAssertEqual(restored.endLineStyle,.closedArrow)
+        XCTAssertEqual(restored.border?.lineWidth,3)
+        XCTAssertEqual(restored.border?.dashPattern,[6,4])
+    }
+
+    func testSelectedArrowAppearanceChangesLiveAndUndoesAsOneEdit() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome())
+        workspace.activeTool = .arrow
+        workspace.addShape(on:try XCTUnwrap(workspace.page),from:CGPoint(x:50,y:100),to:CGPoint(x:200,y:200),tool:.arrow)
+        let arrow = try XCTUnwrap(workspace.selectedAnnotation)
+        let original = arrow.color
+        workspace.beginAppearanceEditing()
+        workspace.inkColor = .black; workspace.lineWidth = 5
+        workspace.shapeStyle.doubleArrow = true
+        workspace.previewSelectedAppearance()
+        XCTAssertEqual(arrow.color,UIColor(Color.black))
+        XCTAssertEqual(arrow.border?.lineWidth,5)
+        XCTAssertEqual(arrow.startLineStyle,.closedArrow)
+        workspace.finishAppearanceEditing()
+        workspace.undo()
+        XCTAssertEqual(arrow.color,original)
+        XCTAssertEqual(arrow.border?.lineWidth,2)
+        XCTAssertEqual(arrow.startLineStyle,.none)
+        workspace.undo()
+        XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
+    }
+
+    func testFreehandMarkerIsTranslucentAndVisibleDuringDrawing() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome()), view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .freeHighlighter
+        view.beginToolGesture(at:view.convert(CGPoint(x:50,y:200),from:page))
+        view.updateToolGesture(at:view.convert(CGPoint(x:150,y:250),from:page))
+        view.renderInteractionFrame()
+        let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "tool-preview" } as? CAShapeLayer)
+        XCTAssertEqual(try XCTUnwrap(preview.strokeColor?.alpha),0.4,accuracy:0.01)
+        XCTAssertEqual(preview.lineWidth,14*view.scaleFactor,accuracy:0.01)
+        XCTAssertTrue(page.annotations.isEmpty)
+        view.endToolGesture(at:view.convert(CGPoint(x:150,y:250),from:page))
+        let ink = try XCTUnwrap(page.annotations.first)
+        XCTAssertEqual(ink.type,"Ink")
+        XCTAssertEqual(ink.color.cgColor.alpha,0.4,accuracy:0.01)
+        XCTAssertEqual(ink.border?.lineWidth,14)
+        XCTAssertTrue(workspace.save())
+        let persisted = try XCTUnwrap(PDFDocument(url:workspace.url)?.page(at:0)?.annotations.first)
+        XCTAssertEqual(persisted.color.cgColor.alpha,0.4,accuracy:0.01)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty)
+    }
+
+    func testPencilPressureProducesSavedVariableWidthsAndOneMovableStroke() throws {
+        let url = try library.createWelcome(), workspace = PDFWorkspace(url:url)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .pen
+        workspace.pressureSensitive = true
+        workspace.addInk(on:page,points:[CGPoint(x:50,y:200),CGPoint(x:100,y:210),CGPoint(x:150,y:200)],pressures:[0.1,0.2,0.9],marker:false)
+        XCTAssertGreaterThan(page.annotations.count,1)
+        let widths = page.annotations.compactMap { $0.border?.lineWidth }
+        XCTAssertLessThan(try XCTUnwrap(widths.min()),try XCTUnwrap(widths.max()))
+        let first = try XCTUnwrap(page.annotations.first), original = first.bounds
+        workspace.moveAnnotation(first,to:original.offsetBy(dx:20,dy:30))
+        XCTAssertTrue(page.annotations.allSatisfy { $0.bounds == original.offsetBy(dx:20,dy:30) })
+        workspace.undo()
+        XCTAssertTrue(page.annotations.allSatisfy { $0.bounds == original })
+        XCTAssertTrue(workspace.save())
+        let reopened = try XCTUnwrap(PDFDocument(url:url)?.page(at:0))
+        XCTAssertGreaterThan(Set(reopened.annotations.compactMap { $0.border?.lineWidth }).count,1)
+        workspace.removeAnnotation(first)
+        XCTAssertTrue(page.annotations.isEmpty)
+        workspace.undo()
+        XCTAssertGreaterThan(page.annotations.count,1)
+    }
+
+    func testPressurePreviewHasDifferentWidthsBeforeCommit() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome()), view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .pen
+        view.beginToolGesture(at:view.convert(CGPoint(x:50,y:200),from:page))
+        view.updateToolGesture(at:view.convert(CGPoint(x:100,y:210),from:page),pressure:0.2)
+        view.updateToolGesture(at:view.convert(CGPoint(x:150,y:200),from:page),pressure:0.9)
+        view.renderInteractionFrame()
+        let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "pressure-preview" })
+        let widths = (preview.sublayers ?? []).compactMap { ($0 as? CAShapeLayer)?.lineWidth }
+        XCTAssertGreaterThan(Set(widths).count,1)
+        XCTAssertTrue(page.annotations.isEmpty)
+        view.cancelToolGesture()
+        XCTAssertFalse(workspace.dirty)
+    }
+
+    func testPartialEraserCutsOutTheInkInsteadOfPaintingOverIt() throws {
+        let fragments = AnnotationGeometry.erased([CGPoint(x:0,y:0),CGPoint(x:100,y:0)],from:CGPoint(x:50,y:-10),to:CGPoint(x:50,y:10),radius:5)
+        XCTAssertEqual(fragments.count,2)
+        XCTAssertEqual(try XCTUnwrap(fragments.first?.last?.x),45,accuracy:0.01)
+        XCTAssertEqual(try XCTUnwrap(fragments.last?.first?.x),55,accuracy:0.01)
+        XCTAssertEqual(fragments.first?.first,CGPoint(x:0,y:0))
+        XCTAssertEqual(fragments.last?.last,CGPoint(x:100,y:0))
+    }
+
+    func testPartialErasingIsLivePersistsAndUndoesAsOneGesture() throws {
+        let url = try library.createWelcome(), workspace = PDFWorkspace(url:url), view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .pen
+        workspace.addInk(on:page,points:[CGPoint(x:50,y:200),CGPoint(x:250,y:200)],pressures:[nil,nil],marker:false)
+        let original = try XCTUnwrap(page.annotations.first)
+        workspace.activeTool = .erase; workspace.eraserMode = .partial; workspace.eraserSize = 5
+        view.beginToolGesture(at:view.convert(CGPoint(x:150,y:180),from:page))
+        view.updateToolGesture(at:view.convert(CGPoint(x:150,y:220),from:page))
+        view.renderInteractionFrame()
+        XCTAssertEqual(page.annotations.first?.paths?.count,2)
+        XCTAssertFalse(page.annotations.first === original)
+        view.endToolGesture(at:view.convert(CGPoint(x:150,y:220),from:page))
+        XCTAssertTrue(workspace.save())
+        XCTAssertEqual(PDFDocument(url:url)?.page(at:0)?.annotations.first?.paths?.count,2)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.first === original)
+        XCTAssertEqual(original.paths?.count,1)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.isEmpty)
+    }
+
+    func testCancelledEraserRestoresInkAndWholeEraserRemovesPressureGroup() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome()), view = canvas(workspace)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .pen
+        workspace.addInk(on:page,points:[CGPoint(x:50,y:200),CGPoint(x:100,y:200),CGPoint(x:150,y:200)],pressures:[0.1,0.2,0.9],marker:false)
+        let before = page.annotations
+        workspace.activeTool = .erase; workspace.eraserMode = .whole
+        let target = view.convert(CGPoint(x:75,y:200),from:page)
+        view.beginToolGesture(at:target); view.updateToolGesture(at:CGPoint(x:target.x+1,y:target.y)); view.renderInteractionFrame()
+        XCTAssertTrue(page.annotations.isEmpty)
+        view.cancelToolGesture()
+        XCTAssertEqual(page.annotations.map(ObjectIdentifier.init),before.map(ObjectIdentifier.init))
+        view.activateTool(at:target)
+        XCTAssertTrue(page.annotations.isEmpty)
+        workspace.undo()
+        XCTAssertEqual(page.annotations.count,before.count)
+    }
+
+    func testCheckCrossDateAndStampCanBePlacedRepeatedlyAndReopened() throws {
+        let url = try library.createWelcome(), workspace = PDFWorkspace(url:url)
+        let page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .checkmark
+        workspace.placeMark(.checkmark,on:page,at:CGPoint(x:50,y:300))
+        workspace.placeMark(.checkmark,on:page,at:CGPoint(x:90,y:300))
+        workspace.placeMark(.cross,on:page,at:CGPoint(x:130,y:300))
+        workspace.placeMark(.date,on:page,at:CGPoint(x:50,y:250))
+        workspace.stampText = "REVIEWED"
+        workspace.placeMark(.stamp,on:page,at:CGPoint(x:50,y:200))
+        XCTAssertEqual(page.annotations.count,5)
+        XCTAssertEqual(page.annotations.filter { $0.type == "Ink" }.count,3)
+        XCTAssertEqual(page.annotations[2].paths?.count,2)
+        XCTAssertTrue(workspace.save())
+        XCTAssertEqual(PDFDocument(url:url)?.page(at:0)?.annotations.count,5)
+        XCTAssertTrue(PDFDocument(url:url)?.page(at:0)?.annotations.contains { $0.contents == "REVIEWED" } == true)
+    }
+
+    func testPencilScribbleCanFocusATextAreaWithoutAnInitialTap() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome()), view = canvas(workspace)
+        workspace.activeTool = .text
+        let page = try XCTUnwrap(workspace.page)
+        let input = try XCTUnwrap(view.focusScribble(at:view.convert(CGPoint(x:50,y:300),from:page)))
+        input.text = "Hello"
+        XCTAssertTrue(view.acceptsScribble)
+        view.finishTextEntry()
+        XCTAssertEqual(page.annotations.first?.contents,"Hello")
+        workspace.activeTool = .pen
+        workspace.convertHandwriting = true
+        XCTAssertNotNil(view.focusScribble(at:view.convert(CGPoint(x:50,y:250),from:page)))
+        view.cancelTextEntry()
+        workspace.convertHandwriting = false
+        XCTAssertFalse(view.acceptsScribble)
+    }
+
+    func testReadingLayoutAndMarginChangesDoNotModifyThePDF() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome()), view = canvas(workspace)
+        let crop = workspace.page?.bounds(for:.cropBox)
+        var settings = ReadingSettings(); settings.layout = .horizontal
+        view.configureReading(settings)
+        XCTAssertEqual(view.displayDirection,.horizontal)
+        settings.layout = .twoPages; view.configureReading(settings)
+        XCTAssertEqual(view.displayMode,.twoUpContinuous)
+        settings.layout = .vertical; settings.hideMargins = true; view.configureReading(settings)
+        settings.hideMargins = false; view.configureReading(settings)
+        XCTAssertTrue(view.autoScales)
+        XCTAssertEqual(workspace.page?.bounds(for:.cropBox),crop)
+        XCTAssertFalse(workspace.dirty)
+        XCTAssertFalse(workspace.canUndo)
+    }
+
+    func testLinksPersistWithTheirAddressAndCanBeUndone() throws {
+        let url = try library.createWelcome(), workspace = PDFWorkspace(url:url)
+        let target = try XCTUnwrap(URL(string:"https://example.com/reference#page"))
+        workspace.addLink(on:try XCTUnwrap(workspace.page),bounds:CGRect(x:50,y:250,width:120,height:30),url:target)
+        XCTAssertTrue(workspace.save())
+        XCTAssertEqual(PDFDocument(url:url)?.page(at:0)?.annotations.first?.url,target)
+        workspace.undo()
+        XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
+    }
+
+    func testInsertedImageIsAnEditableStampAndRedactionCanBeUndone() async throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome())
+        let png = UIGraphicsImageRenderer(size:CGSize(width:20,height:20)).image { context in UIColor.blue.setFill();context.cgContext.fill(CGRect(x:0,y:0,width:20,height:20)) }.pngData()
+        try await workspace.replaceContent(operation:.insertImage,page:0,region:CGRect(x:50,y:300,width:80,height:80),image:try XCTUnwrap(png))
+        XCTAssertTrue(workspace.page?.annotations.contains { $0.type == "Stamp" } == true)
+        workspace.undo()
+        XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
+        let selection = try XCTUnwrap(workspace.document?.findString("Paper Studio",withOptions:[]).first)
+        let page = try XCTUnwrap(workspace.page)
+        try await workspace.replaceContent(operation:.redact,page:0,region:selection.bounds(for:page))
+        XCTAssertFalse(workspace.document?.string?.contains("Paper Studio") == true)
+        workspace.undo()
+        XCTAssertTrue(workspace.document?.string?.contains("Paper Studio") == true)
     }
 }

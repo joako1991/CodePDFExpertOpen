@@ -2,6 +2,12 @@
 
 ## En développement — main
 
+- Comportements issus de la vidéo : modes Annoter/Modifier/Remplir et signer/Exporter, palettes permanentes et réglages par second toucher sur l’outil.
+- Marqueur libre, pression du Pencil, Scribble natif, gommes entière/partielle, lignes et flèches, bordures et remplissages, coches/croix/dates/tampons.
+- Navigation par annotations et sommaire, thèmes jour/sépia/nuit, dispositions de lecture, lecture vocale et maintien de l’écran éveillé.
+- Insertion d’images en annotations PDF, liens et biffure de contenu avec MuPDF ; tests natifs de suppression du contenu et de conservation des autres occurrences d’image.
+- Comparaison horodatée de la référence et inventaire des fonctions Premium, avec limites explicites des conversions et de l’IA.
+
 - Saisie et modification de texte/notes directement sur la page ; mise en forme visible pendant la saisie, sans fenêtre de confirmation séparée.
 - Réactivité : prévisualisation par rafraîchissement, fin du délai fixe de sélection et des animations implicites de tracé, déplacement/redimensionnement visibles pendant le geste.
 - Historique d’annulation par opérations ; les annotations et gestes ne copient plus le PDF entier. Historique compatible avec les remplacements de document MuPDF.

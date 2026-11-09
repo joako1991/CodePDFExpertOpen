@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 typedef struct { float x0, y0, x1, y1; } PSRect;
-enum { PS_REPLACE_TEXT = 1, PS_REPLACE_IMAGE = 2, PS_EXPORT_DOCX = 3 };
+enum { PS_REPLACE_TEXT = 1, PS_REPLACE_IMAGE = 2, PS_EXPORT_DOCX = 3, PS_INSERT_IMAGE = 4, PS_REDACT = 5 };
 typedef struct {
     unsigned char *data;
     size_t length;
