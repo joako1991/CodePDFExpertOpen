@@ -844,7 +844,7 @@ final class PaperStudioTests: XCTestCase {
         let restored = try XCTUnwrap(PDFDocument(url:url)?.page(at:0)?.annotations.first)
         XCTAssertEqual(restored.endLineStyle,.closedArrow)
         XCTAssertEqual(restored.border?.lineWidth,3)
-        XCTAssertEqual(restored.border?.dashPattern,[6,4])
+        XCTAssertEqual(restored.border?.dashPattern as? [NSNumber],[6,4])
     }
 
     func testSelectedArrowAppearanceChangesLiveAndUndoesAsOneEdit() throws {

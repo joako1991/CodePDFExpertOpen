@@ -49,17 +49,24 @@ enum AnnotationGeometry {
                 guard let start = points.last else { return }
                 let control = element.points[0], end = element.points[1]
                 for i in 1...20 {
-                    let t = CGFloat(i) / 20, u = 1 - t
-                    points.append(CGPoint(x: u*u*start.x + 2*u*t*control.x + t*t*end.x,
-                                          y: u*u*start.y + 2*u*t*control.y + t*t*end.y))
+                    let t: CGFloat = CGFloat(i) / 20
+                    let u: CGFloat = 1 - t
+                    let a: CGFloat = u*u, b: CGFloat = 2*u*t, c: CGFloat = t*t
+                    let x: CGFloat = a*start.x + b*control.x + c*end.x
+                    let y: CGFloat = a*start.y + b*control.y + c*end.y
+                    points.append(CGPoint(x:x,y:y))
                 }
             case .addCurveToPoint:
                 guard let start = points.last else { return }
                 let c1 = element.points[0], c2 = element.points[1], end = element.points[2]
                 for i in 1...24 {
-                    let t = CGFloat(i) / 24, u = 1 - t
-                    points.append(CGPoint(x: u*u*u*start.x + 3*u*u*t*c1.x + 3*u*t*t*c2.x + t*t*t*end.x,
-                                          y: u*u*u*start.y + 3*u*u*t*c1.y + 3*u*t*t*c2.y + t*t*t*end.y))
+                    let t: CGFloat = CGFloat(i) / 24
+                    let u: CGFloat = 1 - t
+                    let a: CGFloat = u*u*u, b: CGFloat = 3*u*u*t
+                    let c: CGFloat = 3*u*t*t, d: CGFloat = t*t*t
+                    let x0: CGFloat = a*start.x + b*c1.x, x1: CGFloat = c*c2.x + d*end.x
+                    let y0: CGFloat = a*start.y + b*c1.y, y1: CGFloat = c*c2.y + d*end.y
+                    points.append(CGPoint(x:x0+x1,y:y0+y1))
                 }
             case .closeSubpath: if let first = points.first { points.append(first) }
             @unknown default: break

@@ -29,9 +29,11 @@ struct AnnotationAppearance: Equatable {
         else { annotation.removeValue(forAnnotationKey: .appearanceDictionary) }
     }
     static func == (a: Self, b: Self) -> Bool {
-        a.annotation === b.annotation && a.color == b.color && a.interior == b.interior && a.font == b.font &&
-        a.fontColor == b.fontColor && a.border?.lineWidth == b.border?.lineWidth &&
-        a.border?.style == b.border?.style && a.border?.dashPattern == b.border?.dashPattern && a.startLine == b.startLine && a.endLine == b.endLine
+        guard a.annotation === b.annotation, a.color == b.color, a.interior == b.interior,
+              a.font == b.font, a.fontColor == b.fontColor else { return false }
+        guard a.border?.lineWidth == b.border?.lineWidth, a.border?.style == b.border?.style else { return false }
+        let aDash = a.border?.dashPattern as? [NSNumber], bDash = b.border?.dashPattern as? [NSNumber]
+        return aDash == bDash && a.startLine == b.startLine && a.endLine == b.endLine
     }
 }
 
