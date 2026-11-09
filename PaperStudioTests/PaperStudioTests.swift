@@ -869,6 +869,66 @@ final class PaperStudioTests: XCTestCase {
         XCTAssertTrue(workspace.page?.annotations.isEmpty == true)
     }
 
+    private func pagePixel(_ page: PDFPage, at point: CGPoint) throws -> [UInt8] {
+        var bytes = [UInt8](repeating: 255, count: 4)
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(data:buffer.baseAddress,width:1,height:1,bitsPerComponent:8,bytesPerRow:4,
+                space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.setFillColor(UIColor.white.cgColor); context.fill(CGRect(x:0,y:0,width:1,height:1))
+            context.translateBy(x:0.5-point.x,y:0.5-point.y)
+            page.draw(with:.mediaBox,to:context)
+        }
+        return bytes
+    }
+
+    func testSavedShapeAppearanceCanBeRecoloredAndUndoneVisibly() throws {
+        let url = try library.createWelcome(), source = PDFWorkspace(url:url)
+        source.activeTool = .line; source.lineWidth = 8
+        source.addShape(on:try XCTUnwrap(source.page),from:CGPoint(x:350,y:100),to:CGPoint(x:550,y:100),tool:.line)
+        XCTAssertTrue(source.save())
+        let workspace = PDFWorkspace(url:url), page = try XCTUnwrap(workspace.page)
+        let annotation = try XCTUnwrap(page.annotations.first), point = CGPoint(x:450,y:100)
+        XCTAssertTrue(annotation.hasAppearanceStream, "Exercise an existing saved PDF appearance")
+        XCTAssertGreaterThan(try pagePixel(page,at:point)[0],180)
+        workspace.selectAnnotation(annotation)
+        workspace.beginAppearanceEditing(); workspace.inkColor = Color(uiColor:.blue)
+        workspace.previewSelectedAppearance()
+        let live = try pagePixel(page,at:point)
+        XCTAssertLessThan(live[0],70); XCTAssertGreaterThan(live[2],200)
+        workspace.finishAppearanceEditing()
+        XCTAssertTrue(workspace.save())
+        let saved = try pagePixel(XCTUnwrap(PDFDocument(url:url)?.page(at:0)),at:point)
+        XCTAssertLessThan(saved[0],70); XCTAssertGreaterThan(saved[2],200)
+        workspace.undo()
+        let restored = try pagePixel(page,at:point)
+        XCTAssertGreaterThan(restored[0],180); XCTAssertLessThan(restored[2],130)
+    }
+
+    func testPartialEraserRegeneratesSavedInkAppearanceAndUndoRestoresIt() throws {
+        let url = try library.createWelcome(), source = PDFWorkspace(url:url)
+        source.activeTool = .pen; source.lineWidth = 8
+        source.addInk(on:try XCTUnwrap(source.page),points:[CGPoint(x:350,y:100),CGPoint(x:550,y:100)],pressures:[nil,nil],marker:false)
+        XCTAssertTrue(source.save())
+        let workspace = PDFWorkspace(url:url), view = canvas(workspace), page = try XCTUnwrap(workspace.page)
+        let original = try XCTUnwrap(page.annotations.first), center = CGPoint(x:450,y:100)
+        XCTAssertTrue(original.hasAppearanceStream)
+        XCTAssertLessThan(try pagePixel(page,at:center)[0],70)
+        workspace.activeTool = .erase; workspace.eraserMode = .partial; workspace.eraserSize = 10
+        view.beginToolGesture(at:view.convert(CGPoint(x:450,y:80),from:page))
+        let end = view.convert(CGPoint(x:450,y:120),from:page)
+        view.updateToolGesture(at:end); view.renderInteractionFrame()
+        XCTAssertGreaterThan(try pagePixel(page,at:center)[0],230)
+        XCTAssertLessThan(try pagePixel(page,at:CGPoint(x:390,y:100))[0],70)
+        view.endToolGesture(at:end)
+        XCTAssertTrue(workspace.save())
+        let reopened = try XCTUnwrap(PDFDocument(url:url)?.page(at:0))
+        XCTAssertGreaterThan(try pagePixel(reopened,at:center)[0],230)
+        XCTAssertLessThan(try pagePixel(reopened,at:CGPoint(x:390,y:100))[0],70)
+        workspace.undo()
+        XCTAssertTrue(page.annotations.first === original)
+        XCTAssertLessThan(try pagePixel(page,at:center)[0],70)
+    }
+
     func testFreehandMarkerIsTranslucentAndVisibleDuringDrawing() throws {
         let workspace = PDFWorkspace(url:try library.createWelcome()), view = canvas(workspace)
         let page = try XCTUnwrap(workspace.page)

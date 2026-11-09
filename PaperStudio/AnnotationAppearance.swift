@@ -10,20 +10,33 @@ struct AnnotationAppearance: Equatable {
     let border: PDFBorder?
     let startLine: PDFLineStyle
     let endLine: PDFLineStyle
+    private let appearance: Any?
     init(_ annotation: PDFAnnotation) {
         self.annotation = annotation; color = annotation.color; interior = annotation.interiorColor
         font = annotation.font; fontColor = annotation.fontColor; border = annotation.border?.copy() as? PDFBorder
         startLine = annotation.startLineStyle; endLine = annotation.endLineStyle
+        appearance = annotation.value(forAnnotationKey: .appearanceDictionary)
     }
     func restore() {
         annotation.color = color; annotation.border = border?.copy() as? PDFBorder
         if ["Square","Circle","Line"].contains(annotation.type ?? "") { annotation.interiorColor = interior }
         if annotation.type == "FreeText" || annotation.type == "Widget" { annotation.font = font; annotation.fontColor = fontColor }
         if annotation.type == "Line" { annotation.startLineStyle = startLine; annotation.endLineStyle = endLine }
+        restoreAppearanceStream()
+    }
+    func restoreAppearanceStream() {
+        if let appearance { annotation.setValue(appearance, forAnnotationKey: .appearanceDictionary) }
+        else { annotation.removeValue(forAnnotationKey: .appearanceDictionary) }
     }
     static func == (a: Self, b: Self) -> Bool {
         a.annotation === b.annotation && a.color == b.color && a.interior == b.interior && a.font == b.font &&
         a.fontColor == b.fontColor && a.border?.lineWidth == b.border?.lineWidth &&
         a.border?.style == b.border?.style && a.border?.dashPattern == b.border?.dashPattern && a.startLine == b.startLine && a.endLine == b.endLine
+    }
+}
+
+extension PDFAnnotation {
+    var supportsAppearanceEditing: Bool {
+        ["FreeText", "Ink", "Square", "Circle", "Line", "Highlight", "Underline", "StrikeOut", "Squiggly"].contains(type ?? "")
     }
 }

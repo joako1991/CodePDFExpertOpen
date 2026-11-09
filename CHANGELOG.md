@@ -7,6 +7,7 @@
 - Navigation par annotations et sommaire, thèmes jour/sépia/nuit, dispositions de lecture, lecture vocale et maintien de l’écran éveillé.
 - Insertion d’images en annotations PDF, liens et biffure de contenu avec MuPDF ; tests natifs de suppression du contenu et de conservation des autres occurrences d’image.
 - Comparaison horodatée de la référence et inventaire des fonctions Premium, avec limites explicites des conversions et de l’IA.
+- Régénération de l’apparence des annotations enregistrées lors du changement de style et de la gomme partielle ; vérifications de pixels et annulation de l’apparence précédente. Mise en forme directe d’un texte sélectionné et réglages adaptés au type d’annotation.
 
 - Saisie et modification de texte/notes directement sur la page ; mise en forme visible pendant la saisie, sans fenêtre de confirmation séparée.
 - Réactivité : prévisualisation par rafraîchissement, fin du délai fixe de sélection et des animations implicites de tracé, déplacement/redimensionnement visibles pendant le geste.

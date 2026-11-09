@@ -43,7 +43,7 @@ The upgrade pages advertise editing/redaction, conversions, AI extraction, signi
 
 ## Validation
 
-The production C bridge has native regression cases for inserted-image rendering, original-content redaction, rotated/cropped pages, and preserving image occurrences outside the selected area. XCTest covers live previews, style changes, saved line/arrow properties, pressure widths, group movement/deletion, partial/whole erasing and undo, repeated stamps, Scribble focus, reading layout/margin changes, links, and native operation history.
+The production C bridge has native regression cases for inserted-image rendering, original-content redaction, rotated/cropped pages, and preserving image occurrences outside the selected area. XCTest covers live previews, style changes, saved line/arrow properties, pressure widths, group movement/deletion, partial/whole erasing and undo, repeated stamps, Scribble focus, reading layout/margin changes, links, and native operation history. Pixel checks also exercise recolouring and partial erasing of reopened annotations that already have PDF appearance streams; undo restores their previous rendering.
 
 The Linux syntax/project/localization checks do not replace Xcode compilation. Simulator tests exercise the editing pipeline and saved PDFs. Actual Pencil force, system handwriting recognition, speech playback and physical touch feel still require an iPad check.
 

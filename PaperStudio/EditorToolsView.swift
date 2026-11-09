@@ -50,21 +50,21 @@ struct EditorToolsView: View {
             }.padding(.horizontal,16)
             if workspace.activeTool != .read {
                 HStack(spacing: 10) {
-                    if workspace.activeTool == .text {
+                    if editingText {
                         Menu {
                             ForEach(TextFamily.allCases) { family in
-                                Button(LocalizedStringKey(family.title)) { workspace.textStyle.useFamily(family) }
+                                Button(LocalizedStringKey(family.title)) { setTextStyle { $0.useFamily(family) } }
                             }
                         } label: { Text(LocalizedStringKey(workspace.textStyle.family.title)).font(.caption) }
-                        Button { workspace.textStyle.size = max(6,workspace.textStyle.size-1) } label: { Image(systemName:"minus") }
+                        Button { setTextStyle { $0.size = max(6,$0.size-1) } } label: { Image(systemName:"minus") }
                         Text("\(Int(workspace.textStyle.size)) pt").font(.caption.monospacedDigit())
-                        Button { workspace.textStyle.size = min(96,workspace.textStyle.size+1) } label: { Image(systemName:"plus") }
+                        Button { setTextStyle { $0.size = min(96,$0.size+1) } } label: { Image(systemName:"plus") }
                     }
-                    if workspace.activeTool != .erase && workspace.activeTool != .read {
+                    if showsAppearanceControls {
                         ForEach(Array(ToolPalette.colors.enumerated()),id:\.offset) { index,color in
                             Button {
                                 workspace.beginAppearanceEditing()
-                                if workspace.activeTool == .text { workspace.textStyle.color = color }
+                                if editingText { workspace.textStyle.color = color }
                                 else { workspace.inkColor = color }
                                 workspace.previewSelectedAppearance(); workspace.finishAppearanceEditing()
                             } label: {
@@ -86,6 +86,7 @@ struct EditorToolsView: View {
                                 .onChange(of:workspace.lineWidth) { _ in workspace.previewSelectedAppearance() }
                                 .onChange(of:workspace.opacity) { _ in workspace.previewSelectedAppearance() }
                                 .onChange(of:workspace.shapeStyle) { _ in workspace.previewSelectedAppearance() }
+                                .onChange(of:workspace.textStyle) { _ in workspace.previewSelectedAppearance() }
                         }
                     Button("Terminer") { workspace.finishInteraction(); workspace.activeTool = .read }.font(.caption)
                 }.padding(.horizontal,16)
@@ -104,7 +105,18 @@ struct EditorToolsView: View {
         }.buttonStyle(.plain).padding(.vertical,8).background(Color(uiColor:.secondarySystemBackground))
     }
 
-    private var selectedColor: Color { workspace.activeTool == .text ? workspace.textStyle.color : workspace.inkColor }
+    private var editingText: Bool { workspace.activeTool == .text || (workspace.activeTool == .move && workspace.selectedAnnotation?.type == "FreeText") }
+    private var showsAppearanceControls: Bool {
+        if workspace.activeTool == .move { return workspace.selectedAnnotation?.supportsAppearanceEditing == true }
+        return ![.read, .erase, .insertImage, .targetImage, .link, .redact, .replaceText].contains(workspace.activeTool)
+    }
+    private var selectedColor: Color { editingText ? workspace.textStyle.color : workspace.inkColor }
+
+    private func setTextStyle(_ change: (inout TextStyle) -> Void) {
+        workspace.beginAppearanceEditing()
+        var style = workspace.textStyle; change(&style); workspace.textStyle = style
+        workspace.previewSelectedAppearance(); workspace.finishAppearanceEditing()
+    }
 
     private func toolButton(_ tool: CanvasTool) -> some View {
         Button {
@@ -126,7 +138,7 @@ struct EditorToolsView: View {
     @ViewBuilder private var configuration: some View {
         VStack(alignment:.leading,spacing:16) {
             Text(LocalizedStringKey(workspace.activeTool.title)).font(.headline)
-            if workspace.activeTool == .text { TextStyleControls(style:$workspace.textStyle) }
+            if editingText { TextStyleControls(style:$workspace.textStyle) }
             else if workspace.activeTool == .signature { Button("Configurer la signature") { settings = false; signature() } }
             else if workspace.activeTool == .insertImage { Button("Choisir une image",action:pickImage) }
             else if workspace.activeTool == .date { DatePicker("Date",selection:$workspace.stampDate,displayedComponents:.date) }
@@ -134,7 +146,7 @@ struct EditorToolsView: View {
             else if workspace.activeTool == .erase {
                 Picker("Mode de gomme",selection:$workspace.eraserMode) { ForEach(EraserMode.allCases) { Text(LocalizedStringKey($0.title)).tag($0) } }.pickerStyle(.segmented)
                 Slider(value:$workspace.eraserSize,in:4...30) { Text("Taille de la gomme") }
-            } else if workspace.activeTool.markup != nil || workspace.activeTool.draws || workspace.activeTool == .move {
+            } else if showsAppearanceControls {
                 ColorPicker("Couleur",selection:$workspace.inkColor,supportsOpacity:false)
                 Slider(value:$workspace.lineWidth,in:0.5...24,step:0.5) { Text("Épaisseur") }
                 Text(L10n.format("Épaisseur : %.1f pt",Double(workspace.lineWidth))).font(.caption)
@@ -146,8 +158,12 @@ struct EditorToolsView: View {
                 }
                 if workspace.activeTool.isShape || workspace.activeTool == .move {
                     Picker("Style de bord",selection:$workspace.shapeStyle.pattern) { ForEach(StrokePattern.allCases) { Text(LocalizedStringKey($0.title)).tag($0) } }
-                    if workspace.activeTool == .arrow { Toggle("Double flèche",isOn:$workspace.shapeStyle.doubleArrow) }
-                    if [.rectangle,.oval,.move].contains(workspace.activeTool) { Toggle("Remplissage",isOn:$workspace.shapeStyle.filled) }
+                    if workspace.activeTool == .arrow || (workspace.activeTool == .move && workspace.selectedAnnotation?.endLineStyle == .closedArrow) {
+                        Toggle("Double flèche",isOn:$workspace.shapeStyle.doubleArrow)
+                    }
+                    if [.rectangle,.oval].contains(workspace.activeTool) || (workspace.activeTool == .move && ["Square","Circle"].contains(workspace.selectedAnnotation?.type ?? "")) {
+                        Toggle("Remplissage",isOn:$workspace.shapeStyle.filled)
+                    }
                 }
             }
         }

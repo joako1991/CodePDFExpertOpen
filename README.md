@@ -5,7 +5,7 @@ Application native en anglais, espagnol et français pour **iPadOS 17+**, sous *
 ## Changements en développement sur `main`
 
 - Choix de langue English / Español / Français dans la barre latérale, conservé au redémarrage. Le changement de l’interface ne ferme pas le document et ne traduit pas les PDF de l’utilisateur. Les sélecteurs système iOS peuvent suivre la langue de l’appareil.
-- Outils persistants : activer, configurer, puis utiliser sur la page. Toucher à nouveau le bouton ou choisir Terminer pour désactiver l’outil. Les commandes de document (export, rotation, etc.) restent des actions directes.
+- Outils persistants : activer, configurer, puis utiliser sur la page. Toucher à nouveau le bouton ouvre ses réglages ; choisir Lire ou Terminer désactive l’outil. Les commandes de document (export, rotation, etc.) restent des actions directes.
 - Soulignement bleu par défaut, surlignage jaune et barré rouge : activer d’abord, puis sélectionner/glisser sur le texte pour appliquer automatiquement. Chaque outil conserve sa couleur configurée durant la session.
 - Texte : activer, toucher le point de départ ou tracer le cadre, puis écrire directement sur la page sans fenêtre de saisie séparée. Terminer valide le texte ; Annuler ferme la saisie sans ajouter d’annotation. Choisir famille (sans empattement, avec empattement, monospace), taille, graisse et couleur. Pour modifier un texte existant, sélectionner son annotation puis Modifier le texte. Pour redimensionner, activer Déplacer, sélectionner la zone et tirer sa poignée inférieure droite.
 - Notes et signatures placées à l’endroit touché. Le remplacement de contenu MuPDF s’active également avant de sélectionner la ligne ou l’image.
@@ -63,19 +63,19 @@ Pour votre iPad : connecter l’appareil au Mac, activer le mode développeur, c
 - Exports PNG, texte, PDF protégé, impression, aplatissement/réduction avec comparaison de taille et copie avec zones masquées intégrées aux pixels.
 - Notices et licence accessibles dans **À propos et licences**.
 
-Pour remplacer une ligne : sélectionner le texte dans le lecteur, puis **Modifier le contenu → Remplacer une ligne de texte**. Pour une image : **Modifier le contenu → Remplacer une image**, toucher l’image, choisir la nouvelle photo et appliquer. L’original importé n’est pas modifié : l’application travaille sur une copie locale et les changements du moteur s’intègrent à l’historique d’annulation.
+Sur `main`, pour remplacer une ligne : ouvrir **Modifier le PDF**, activer l’outil de remplacement de texte, puis toucher la ligne. Pour une image : activer le remplacement d’image, toucher l’image et choisir la nouvelle photo. L’original importé n’est pas modifié : l’application travaille sur une copie locale et les changements du moteur s’intègrent à l’historique d’annulation.
 
 ## Validation et limites
 
 La version 0.1 est une **première version de développement**, pas une reproduction complète de PDF Expert Premium.
 
-Le pont C de production a été compilé et testé sur Linux : **16 tests natifs passent**, dont texte Unicode, page tournée/cadrée, occurrence d’image partagée ou imbriquée, permissions, conservation du chiffrement, erreurs et DOCX. L’étude initiale possède aussi 11 tests indépendants réussis. La syntaxe des **17 fichiers Swift**, le format/raccordement du projet Xcode et les scripts shell sont vérifiés ici.
+Le pont C de production sur `main` a été compilé et testé sur Linux : **21 tests natifs passent**, dont texte Unicode, page tournée/cadrée, occurrence d’image partagée ou imbriquée, insertion d’image, biffure de contenu, permissions, conservation du chiffrement, erreurs et DOCX. La syntaxe des **27 fichiers Swift**, le format/raccordement du projet Xcode et les ressources des trois langues sont également vérifiés.
 
-**La compilation et l’exécution des tests iPadOS sur simulateur ont réussi sur macOS via [GitHub Actions](https://github.com/joako1991/CodePDFExpertOpen/actions/runs/41610773961).** Le scheme contient 24 XCTest. La préparation locale reste Linux, sans SDK Apple ; la CI `.github/workflows/ipados.yml` fournit la validation Xcode distante et teste aussi le pont sur Ubuntu. Consulter le run correspondant au commit utilisé. Les gestes, Pencil, scanner et documents complexes restent à essayer sur un iPad physique.
+Le scheme sur `main` contient **65 XCTest**, notamment des vérifications de rendu avant validation du geste et après enregistrement/réouverture. La préparation locale reste Linux, sans SDK Apple ; [GitHub Actions](https://github.com/joako1991/CodePDFExpertOpen/actions/workflows/ipados.yml) fournit la compilation et les tests sur simulateur iPad avec Xcode/macOS et teste aussi le pont sur Ubuntu. Consulter le résultat correspondant au commit utilisé. Le tag `v0.1` conserve sa suite initiale de 24 XCTest. Les gestes physiques, la pression du Pencil, Scribble, le scanner et les documents complexes restent à essayer sur un iPad.
 
 L’édition du texte est limitée à une ligne et ne préserve pas automatiquement la police, les styles, la composition ou le reflow d’origine. Le remplacement d’image conserve le cadre actuel et peut déformer le ratio ; les images inline sont refusées. Le DOCX ne garantit pas la fidélité des tableaux, colonnes ou polices ; aucune conversion Excel/PowerPoint n’est proposée. Pas de synchronisation cloud propre à l’application, ni d’assistant IA.
 
-La signature est graphique, sans certification cryptographique. Le mode sombre change le fond de lecture, pas les couleurs des pages. Les signets sont locaux, non embarqués dans les exports. L’aplatissement et l’OCR réécrivent les pages en images et font perdre les interactions ; un export peut être plus volumineux que l’original. L’export avec masques nécessite encore une validation native dédiée avant d’être présenté comme un caviardage certifié. Les recherches et certains rendus restent synchrones ; les gros PDF consomment de la mémoire. La pile d’annulation conserve jusqu’à 12 instantanés et évince progressivement au-delà de 64 Mo, sauf un instantané unique plus gros.
+La signature est graphique, sans certification cryptographique. Les thèmes jour/sépia/nuit changent l’affichage sans modifier les couleurs enregistrées du PDF. Les signets sont locaux, non embarqués dans les exports. L’aplatissement et l’OCR réécrivent les pages en images et font perdre les interactions ; un export peut être plus volumineux que l’original. L’export avec masques est distinct de la biffure de contenu MuPDF. Les recherches et certains rendus restent synchrones ; les gros PDF consomment de la mémoire. La pile d’annulation conserve jusqu’à 100 opérations, avec un budget estimé de 64 Mo ; une opération unique plus grosse peut dépasser ce budget. Les opérations natives retiennent les documents avant/après pour l’annulation.
 
 ## Tests
 
@@ -112,6 +112,6 @@ Ces outils JavaScript sont des dépendances de développement uniquement, non em
 
 Avant une distribution binaire, fournir le code source correspondant, ses notices et les moyens de reconstruction. Aucune compatibilité automatique avec les conditions de distribution de l’App Store n’est affirmée. Les frameworks Apple sont fournis par le système et ne sont pas redistribués dans ce dépôt.
 
-Voir [les changements 0.1](CHANGELOG.md), [le guide macOS](docs/BUILD_MACOS.md), [l’étude MuPDF initiale](docs/MUPDF_AGPL_STUDY.md) et [la comparaison fonctionnelle](docs/PRODUCT_RESEARCH.md). Les sources officielles de PDF Expert et d’Apple étaient encore refusées par le proxy lors de la recherche ; leurs offres commerciales actuelles ne sont pas présentées comme vérifiées.
+Voir [les changements 0.1](CHANGELOG.md), [le guide macOS](docs/BUILD_MACOS.md), [l’étude MuPDF initiale](docs/MUPDF_AGPL_STUDY.md) et [la comparaison fonctionnelle](docs/PRODUCT_RESEARCH.md). La recherche initiale avait un accès réseau limité ; [la comparaison de la vidéo](docs/REFERENCE_BEHAVIOR.md) distingue les observations et les offres Premium publiées, vérifiées le 9 novembre 2026.
 
 Chaque tâche cloud est déjà isolée : utiliser le checkout existant, sans créer de worktree sauf demande explicite.

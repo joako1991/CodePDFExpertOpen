@@ -289,14 +289,16 @@ final class PDFWorkspace: ObservableObject {
 
     func beginAppearanceEditing() {
         finishAppearanceEditing()
-        if let annotation = selectedAnnotation, activeTool.isShape || activeTool == .move || activeTool == .text {
+        if let annotation = selectedAnnotation, annotation.supportsAppearanceEditing,
+           activeTool.isShape || activeTool == .move || activeTool == .text {
             appearanceBefore = groupedAnnotations(annotation).map(AnnotationAppearance.init)
             appearanceWidth = max(0.01,lineWidth)
         }
     }
 
     func previewSelectedAppearance() {
-        guard let annotation = selectedAnnotation, let page = annotation.page, page.document === document,
+        guard let annotation = selectedAnnotation, annotation.supportsAppearanceEditing,
+              let page = annotation.page, page.document === document,
               activeTool.isShape || activeTool == .move || activeTool == .text else { return }
         for annotation in groupedAnnotations(annotation) {
         if annotation.type == "FreeText" {
@@ -316,6 +318,7 @@ final class PDFWorkspace: ObservableObject {
                 annotation.interiorColor = annotation.color
             }
         }
+        annotation.removeValue(forAnnotationKey: .appearanceDictionary)
         }
         pdfView?.annotationsChanged(on:page)
     }
@@ -324,7 +327,11 @@ final class PDFWorkspace: ObservableObject {
         let before = appearanceBefore
         appearanceBefore = []
         let after = before.map { AnnotationAppearance($0.annotation) }
-        guard before != after, let page = before.first?.annotation.page, page.document === document else { return }
+        guard before != after else {
+            for state in before { state.restoreAppearanceStream() }
+            return
+        }
+        guard let page = before.first?.annotation.page, page.document === document else { return }
         for state in before { state.restore() }
         commit(pages:[page],undo:{for state in before { state.restore() }},redo:{for state in after { state.restore() }})
     }
@@ -342,6 +349,7 @@ final class PDFWorkspace: ObservableObject {
         }
         shapeStyle.pattern = annotation.border?.style == .dashed ? .dashed : .solid
         shapeStyle.filled = (annotation.interiorColor?.cgColor.alpha ?? 0) > 0
+        if annotation.type == "Line" { shapeStyle.doubleArrow = annotation.startLineStyle == .closedArrow }
         if annotation.type == "FreeText" { readTextStyle(from:annotation) }
         pdfView?.go(to:annotation.bounds.insetBy(dx:-20,dy:-20),on:page)
     }
@@ -553,16 +561,19 @@ final class PDFWorkspace: ObservableObject {
     func updateTextAnnotation(_ annotation: PDFAnnotation, text: String) {
         guard let page = annotation.page, page.document === document else { return }
         let before = (annotation.contents, annotation.font, annotation.fontColor)
+        let appearance = AnnotationAppearance(annotation)
         let font = textStyle.font, color = UIColor(textStyle.color)
         commit(pages: [page], cost: 1024 + text.utf8.count + (before.0?.utf8.count ?? 0), undo: {
             annotation.contents = before.0
             annotation.font = before.1
             annotation.fontColor = before.2
+            appearance.restoreAppearanceStream()
         }, redo: {
             annotation.contents = text
             if annotation.type == "FreeText" {
                 annotation.font = font
                 annotation.fontColor = color
+                annotation.removeValue(forAnnotationKey: .appearanceDictionary)
             }
         })
     }

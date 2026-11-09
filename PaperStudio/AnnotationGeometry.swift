@@ -33,7 +33,7 @@ enum AnnotationGeometry {
             let u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / cross
             if (0...1).contains(t), (0...1).contains(u) { return true }
         }
-        return min(distance(a, to: c, d), distance(b, to: c, d), distance(c, to: a, b), distance(d, to: a, b)) <= radius
+        return min(min(distance(a, to:c,d),distance(b, to:c,d)),min(distance(c, to:a,b),distance(d, to:a,b))) <= radius
     }
 
     /// Flatten native PDF ink curves, retaining all subpaths in annotation-local coordinates.
@@ -124,6 +124,8 @@ enum AnnotationGeometry {
         guard !remaining.isEmpty, let copy = annotation.copy() as? PDFAnnotation else { return (true, nil) }
         for path in copy.paths ?? [] { copy.remove(path) }
         for points in remaining { copy.add(path(points)) }
+        // A saved /AP stream otherwise keeps drawing the ink that was just erased.
+        copy.removeValue(forAnnotationKey: .appearanceDictionary)
         return (true, copy)
     }
 }
