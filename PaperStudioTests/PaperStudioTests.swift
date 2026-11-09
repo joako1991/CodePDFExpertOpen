@@ -469,7 +469,7 @@ final class PaperStudioTests: XCTestCase {
         let annotation = try XCTUnwrap(workspace.page?.annotations.first)
         XCTAssertEqual(annotation.bounds.minX, 45)
         XCTAssertEqual(annotation.bounds.maxY, 200)
-        XCTAssertEqual(annotation.color,UIColor(Color.blue))
+        XCTAssertEqual(annotation.color.cgColor.components,UIColor(Color.blue).cgColor.components)
         XCTAssertEqual(annotation.border?.lineWidth,3)
     }
 

@@ -114,6 +114,9 @@ struct EditorToolsView: View {
     }
     private var selectedColor: Color { editingText ? workspace.textStyle.color : workspace.inkColor }
     private var hasToolSettings: Bool { showsAppearanceControls || [.erase, .insertImage].contains(workspace.activeTool) }
+    private var usesFixedMarkupThickness: Bool {
+        workspace.activeTool.markup != nil || (workspace.activeTool == .move && ["Highlight","Underline","StrikeOut","Squiggly"].contains(workspace.selectedAnnotation?.type ?? ""))
+    }
 
     private func setTextStyle(_ change: (inout TextStyle) -> Void) {
         workspace.beginAppearanceEditing()
@@ -154,15 +157,17 @@ struct EditorToolsView: View {
                 Slider(value:$workspace.eraserSize,in:4...30) { Text("Taille de la gomme") }
             } else if showsAppearanceControls {
                 ColorPicker("Couleur",selection:$workspace.inkColor,supportsOpacity:false)
-                Slider(value:$workspace.lineWidth,in:0.5...24,step:0.5) { Text("Épaisseur") }
-                Text(L10n.format("Épaisseur : %.1f pt",Double(workspace.lineWidth))).font(.caption)
+                if !usesFixedMarkupThickness {
+                    Slider(value:$workspace.lineWidth,in:0.5...24,step:0.5) { Text("Épaisseur") }
+                    Text(L10n.format("Épaisseur : %.1f pt",Double(workspace.lineWidth))).font(.caption)
+                }
                 Slider(value:$workspace.opacity,in:0.25...1) { Text("Opacité") }
                 Text(L10n.format("Opacité : %lld %%",Int(workspace.opacity*100))).font(.caption)
                 if workspace.activeTool == .pen {
                     Toggle("Pression du Pencil",isOn:$workspace.pressureSensitive).disabled(workspace.convertHandwriting)
                     Toggle("Convertir l’écriture en texte",isOn:$workspace.convertHandwriting)
                 }
-                if workspace.activeTool.isShape || workspace.activeTool == .move {
+                if workspace.activeTool.isShape || (workspace.activeTool == .move && !usesFixedMarkupThickness) {
                     Picker("Style de bord",selection:$workspace.shapeStyle.pattern) { ForEach(StrokePattern.allCases) { Text(LocalizedStringKey($0.title)).tag($0) } }
                     if workspace.activeTool == .arrow || (workspace.activeTool == .move && workspace.selectedAnnotation?.endLineStyle == .closedArrow) {
                         Toggle("Double flèche",isOn:$workspace.shapeStyle.doubleArrow)

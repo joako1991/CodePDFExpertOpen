@@ -44,7 +44,7 @@ jobs:
           path: |
             Vendor/mupdf
             build/mupdf
-          key: mupdf-ios-1.28.6-${{ runner.arch }}-${{ steps.toolchain.outputs.signature }}-${{ hashFiles('scripts/build-mupdf-xcode.sh', 'Native/AppleCompat/**') }}-v2
+          key: mupdf-ios-1.28.6-${{ runner.arch }}-${{ steps.toolchain.outputs.signature }}-${{ hashFiles('scripts/build-mupdf-xcode.sh', 'Native/AppleCompat/**') }}-v3
       - name: Fetch pinned MuPDF sources and notices
         run: bash scripts/ci-prepare-mupdf.sh
       - name: Check project and localization resources
@@ -66,7 +66,7 @@ jobs:
           path: |
             Vendor/mupdf
             build/mupdf
-          key: mupdf-ios-1.28.6-${{ runner.arch }}-${{ steps.toolchain.outputs.signature }}-${{ hashFiles('scripts/build-mupdf-xcode.sh', 'Native/AppleCompat/**') }}-v2
+          key: mupdf-ios-1.28.6-${{ runner.arch }}-${{ steps.toolchain.outputs.signature }}-${{ hashFiles('scripts/build-mupdf-xcode.sh', 'Native/AppleCompat/**') }}-v3
       - name: Retain test results
         if: always()
         uses: actions/upload-artifact@v4
