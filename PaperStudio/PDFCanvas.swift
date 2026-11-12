@@ -640,7 +640,10 @@ final class DrawingPDFView: PDFView {
         guard let workspace else { return }
         var paths: [Int:UIBezierPath] = [:]
         for i in 1..<stroke.count {
-            let multiplier = strokePressures[i].map { 0.25 + min(1,max(0,$0))*1.75 } ?? 1
+            var multiplier: CGFloat = 1
+            if let force = strokePressures[i] {
+                multiplier = 0.25 + min(1, max(0, force)) * 1.75
+            }
             let band = Int((multiplier*8).rounded())
             let path = paths[band] ?? UIBezierPath()
             path.move(to:convert(stroke[i-1],from:page)); path.addLine(to:convert(stroke[i],from:page)); paths[band] = path

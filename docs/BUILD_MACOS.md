@@ -89,7 +89,7 @@ Le scanner caméra s’active seulement sur les appareils VisionKit compatibles.
 bash scripts/test-ios.sh
 ```
 
-Le script sélectionne automatiquement un simulateur iPad disponible et lance les **65 XCTest** sur `main` (24 dans le tag initial `v0.1`). Pour imposer un appareil :
+Le script sélectionne automatiquement un simulateur iPad disponible et lance les **66 XCTest** sur `main` (24 dans le tag initial `v0.1`). Pour imposer un appareil :
 
 ```bash
 xcrun simctl list devices available

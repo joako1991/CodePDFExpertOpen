@@ -43,8 +43,10 @@ extension PDFWorkspace {
         var bands: [Int: [UIBezierPath]] = [:]
         var previousBand: Int?
         for i in 1..<points.count {
-            let force = pressures.indices.contains(i) ? pressures[i] : nil
-            let multiplier = !marker && pressureSensitive ? force.map { 0.25 + min(1,max(0,$0))*1.75 } ?? 1 : 1
+            var multiplier: CGFloat = 1
+            if !marker, pressureSensitive, pressures.indices.contains(i), let force = pressures[i] {
+                multiplier = 0.25 + min(1, max(0, force)) * 1.75
+            }
             let band = Int((multiplier*8).rounded())
             let local = [points[i-1],points[i]].map { CGPoint(x: $0.x-bounds.minX, y: $0.y-bounds.minY) }
             if previousBand == band, let path = bands[band]?.last { path.addLine(to:local[1]) }

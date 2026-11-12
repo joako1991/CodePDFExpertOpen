@@ -996,15 +996,37 @@ final class PaperStudioTests: XCTestCase {
         let page = try XCTUnwrap(workspace.page)
         workspace.activeTool = .pen
         view.beginToolGesture(at:view.convert(CGPoint(x:50,y:200),from:page))
+        view.updateToolGesture(at:view.convert(CGPoint(x:75,y:205),from:page))
         view.updateToolGesture(at:view.convert(CGPoint(x:100,y:210),from:page),pressure:0.2)
         view.updateToolGesture(at:view.convert(CGPoint(x:150,y:200),from:page),pressure:0.9)
         view.renderInteractionFrame()
         let preview = try XCTUnwrap(view.layer.sublayers?.first { $0.name == "pressure-preview" })
         let widths = (preview.sublayers ?? []).compactMap { ($0 as? CAShapeLayer)?.lineWidth }
         XCTAssertGreaterThan(Set(widths).count,1)
+        XCTAssertTrue(widths.contains { abs($0-workspace.lineWidth*view.scaleFactor) < 0.001 },"Samples without pressure must keep the nominal width")
         XCTAssertTrue(page.annotations.isEmpty)
         view.cancelToolGesture()
         XCTAssertFalse(workspace.dirty)
+    }
+
+    func testInkPressureFallbacksAndClampingPreserveTheConfiguredWidth() throws {
+        let workspace = PDFWorkspace(url:try library.createWelcome()), page = try XCTUnwrap(workspace.page)
+        workspace.activeTool = .pen; workspace.lineWidth = 4
+        let points = [CGPoint(x:50,y:200),CGPoint(x:100,y:210),CGPoint(x:150,y:200)]
+        let cases: [(name:String,pressures:[CGFloat?],enabled:Bool,marker:Bool,widths:[CGFloat])] = [
+            ("missing samples",[],true,false,[4]),
+            ("nil samples",[nil,nil,nil],true,false,[4]),
+            ("pressure disabled",[0,0.2,1],false,false,[4]),
+            ("uniform marker",[0,0.2,1],true,true,[4]),
+            ("force clamped to its limits",[nil,-1,2],true,false,[1,8])
+        ]
+        for sample in cases {
+            workspace.pressureSensitive = sample.enabled
+            workspace.addInk(on:page,points:points,pressures:sample.pressures,marker:sample.marker)
+            XCTAssertEqual(page.annotations.compactMap { $0.border?.lineWidth }.sorted(),sample.widths,sample.name)
+            workspace.undo()
+            XCTAssertTrue(page.annotations.isEmpty,sample.name)
+        }
     }
 
     func testPartialEraserCutsOutTheInkInsteadOfPaintingOverIt() throws {
